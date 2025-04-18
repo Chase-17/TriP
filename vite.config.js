@@ -10,7 +10,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/trip/',
+  base: '/TriP/',
   plugins: [
     
     vue({
