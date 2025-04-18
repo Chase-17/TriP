@@ -1,0 +1,21 @@
+
+export default {
+    war: "Война",
+    knowledge: "Знание",
+    society: "Общество",
+    shadow: "Тень",
+    mystics: "Мистика",
+    nature: "Природа",
+    might: "Мощь",
+    reason: "Разум",
+    charisma: "Харизма",
+    trickery: "Хитрость",
+    intuition: "Интуиция",
+    perception: "Восприятие",
+    attack: "Конфликт",
+    order: "Порядок",
+    impact: "Влияние",
+    defence: "Коварство",
+    chaos: "Хаос",
+    research: "Поиск",
+}
