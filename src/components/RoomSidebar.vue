@@ -1,11 +1,13 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import MasterPanel from './MasterPanel.vue'
 import PlayerPanel from './PlayerPanel.vue'
 import RoleSelector from './RoleSelector.vue'
+import UserAvatar from './UserAvatar.vue'
 import { useSessionStore } from '@/stores/session'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
   open: Boolean
@@ -15,6 +17,28 @@ const emit = defineEmits(['close'])
 
 const session = useSessionStore()
 const { role, status, roomId, messages, connections } = storeToRefs(session)
+
+const userStore = useUserStore()
+const { nickname, avatar } = storeToRefs(userStore)
+
+const editingNickname = ref(false)
+const nicknameInput = ref('')
+
+const startEditNickname = () => {
+  nicknameInput.value = nickname.value
+  editingNickname.value = true
+}
+
+const saveNickname = () => {
+  if (nicknameInput.value.trim()) {
+    userStore.setNickname(nicknameInput.value)
+  }
+  editingNickname.value = false
+}
+
+const cancelEditNickname = () => {
+  editingNickname.value = false
+}
 
 const statusLabels = {
   idle: 'ожидание',
@@ -34,6 +58,13 @@ const systemMessages = computed(() =>
 const formatTime = (timestamp) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+const resetAll = () => {
+  if (confirm('Удалить все данные и начать с чистого листа? История чата будет потеряна.')) {
+    session.reset()
+    emit('close')
+  }
 }
 </script>
 
@@ -74,6 +105,58 @@ const formatTime = (timestamp) => {
       </header>
 
       <div class="px-6 py-6 space-y-6">
+        <!-- User profile -->
+        <div class="bg-slate-950/60 border border-white/10 rounded-xl px-5 py-4">
+          <p class="text-xs uppercase tracking-wide text-slate-500 mb-3">Ваш профиль</p>
+          <div class="flex items-center gap-3">
+            <UserAvatar :avatar="avatar" :name="nickname" size="lg" />
+            <div class="flex-1 min-w-0">
+              <div v-if="!editingNickname" class="flex items-center gap-2">
+                <p class="text-lg font-semibold text-slate-50 truncate">{{ nickname }}</p>
+                <button
+                  type="button"
+                  class="text-slate-400 hover:text-sky-400 text-sm"
+                  @click="startEditNickname"
+                  title="Изменить никнейм"
+                >
+                  ✎
+                </button>
+              </div>
+              <div v-else class="flex gap-2">
+                <input
+                  v-model="nicknameInput"
+                  type="text"
+                  class="flex-1 px-3 py-1 rounded border border-white/10 bg-slate-950/60 text-sm text-slate-50"
+                  maxlength="20"
+                  @keydown.enter="saveNickname"
+                  @keydown.esc="cancelEditNickname"
+                />
+                <button
+                  type="button"
+                  class="px-2 text-emerald-400 hover:text-emerald-300"
+                  @click="saveNickname"
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  class="px-2 text-rose-400 hover:text-rose-300"
+                  @click="cancelEditNickname"
+                >
+                  ✕
+                </button>
+              </div>
+              <button
+                type="button"
+                class="text-xs text-slate-400 hover:text-sky-400 mt-1"
+                @click="userStore.regenerateAvatar()"
+              >
+                Сменить аватарку
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Room code indicator -->
         <div
           v-if="roomId"
@@ -84,6 +167,16 @@ const formatTime = (timestamp) => {
             {{ roomId }}
           </p>
         </div>
+
+        <!-- Reset button -->
+        <button
+          v-if="role || roomId"
+          type="button"
+          class="w-full py-2 text-sm text-slate-400 hover:text-rose-400 border border-white/5 hover:border-rose-400/30 rounded-lg transition"
+          @click="resetAll"
+        >
+          Начать заново (удалить все данные)
+        </button>
 
         <!-- Role selector -->
         <RoleSelector />
@@ -104,15 +197,16 @@ const formatTime = (timestamp) => {
           class="bg-slate-950/60 border border-white/10 rounded-xl px-5 py-4"
         >
           <p class="text-xs uppercase tracking-wide text-slate-500 mb-3">Подключённые игроки</p>
-          <ul class="space-y-2">
+          <ul class="space-y-3">
             <li
               v-for="player in connections"
               :key="player.peerId"
-              class="flex items-center justify-between text-sm"
+              class="flex items-center gap-3"
             >
-              <span class="text-slate-200">{{ player.alias }}</span>
+              <UserAvatar :avatar="player.avatar" :name="player.alias" size="sm" />
+              <span class="text-slate-200 flex-1">{{ player.alias }}</span>
               <span
-                class="text-xs px-2 py-0.5 rounded-full"
+                class="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
                 :class="player.ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'"
               >
                 {{ player.ready ? 'онлайн' : 'подключается' }}

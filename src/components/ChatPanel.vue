@@ -2,10 +2,13 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import UserAvatar from './UserAvatar.vue'
 import { useSessionStore } from '@/stores/session'
+import { useUserStore } from '@/stores/user'
 
 const session = useSessionStore()
-const { messages, status, role } = storeToRefs(session)
+const userStore = useUserStore()
+const { messages, status, role, userProfiles } = storeToRefs(session)
 const draft = ref('')
 const listRef = ref(null)
 
@@ -13,6 +16,32 @@ const listRef = ref(null)
 const chatMessages = computed(() => 
   messages.value.filter(m => m.type !== 'system')
 )
+
+// Получаем актуальный профиль пользователя по userId
+const getUserProfile = (userId) => {
+  // Если это текущий пользователь - берем из userStore
+  if (userId === userStore.userId) {
+    return {
+      nickname: userStore.nickname || 'Гость',
+      avatar: userStore.avatar
+    }
+  }
+  
+  // Иначе ищем в карте профилей
+  const profile = userProfiles.value.get(userId)
+  if (profile) {
+    return {
+      nickname: profile.nickname || 'Гость',
+      avatar: profile.avatar
+    }
+  }
+  
+  // Fallback для старых сообщений без userId
+  return {
+    nickname: 'Неизвестный',
+    avatar: null
+  }
+}
 
 const canSend = computed(() => {
   if (role.value === 'master') {
@@ -71,19 +100,33 @@ const formatTime = (timestamp) => {
       <article
         v-for="message in chatMessages"
         :key="message.id"
-        class="rounded-xl px-5 py-3 border max-w-2xl"
+        class="flex gap-3 items-start max-w-2xl"
         :class="[
-          message.senderRole === 'master' ? 'bg-sky-500/10 border-sky-400/30 ml-0 mr-auto' : '',
-          message.senderRole === 'player' ? 'bg-emerald-500/10 border-emerald-400/20 mr-0 ml-auto' : ''
+          message.senderRole === 'master' ? 'ml-0 mr-auto' : '',
+          message.senderRole === 'player' ? 'mr-0 ml-auto flex-row-reverse' : ''
         ]"
       >
-        <header class="flex items-center justify-between text-xs text-slate-400 mb-1">
-          <span class="font-semibold text-slate-200">
-            {{ message.sender }}
-          </span>
-          <time>{{ formatTime(message.time) }}</time>
-        </header>
-        <p class="text-base text-slate-100 whitespace-pre-line">{{ message.text }}</p>
+        <UserAvatar 
+          :avatar="getUserProfile(message.userId).avatar" 
+          :name="getUserProfile(message.userId).nickname" 
+          size="md" 
+        />
+        
+        <div
+          class="rounded-xl px-5 py-3 border flex-1"
+          :class="[
+            message.senderRole === 'master' ? 'bg-sky-500/10 border-sky-400/30' : '',
+            message.senderRole === 'player' ? 'bg-emerald-500/10 border-emerald-400/20' : ''
+          ]"
+        >
+          <header class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span class="font-semibold text-slate-200">
+              {{ getUserProfile(message.userId).nickname }}
+            </span>
+            <time>{{ formatTime(message.time) }}</time>
+          </header>
+          <p class="text-base text-slate-100 whitespace-pre-line">{{ message.text }}</p>
+        </div>
       </article>
     </div>
 

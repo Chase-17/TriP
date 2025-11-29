@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import Peer from 'peerjs'
+import { useUserStore } from './user'
 
 const peerConfig = {
   host: '0.peerjs.com',
@@ -42,7 +43,8 @@ export const useSessionStore = defineStore('session', {
     activeConnection: null,
     messages: [],
     reconnectAttempts: 0,
-    reconnectTimer: null
+    reconnectTimer: null,
+    masterProfile: null // Профиль мастера для игроков
   }),
   persist: {
     key: 'trip-session-v1',
@@ -95,6 +97,42 @@ export const useSessionStore = defineStore('session', {
         })
       })
       return list
+    },
+    // Карта userId -> профиль для актуальных данных в сообщениях
+    userProfiles(state) {
+      const userStore = useUserStore()
+      const profiles = new Map()
+      
+      // Текущий пользователь
+      profiles.set(userStore.userId, {
+        userId: userStore.userId,
+        nickname: userStore.nickname,
+        avatar: userStore.avatar
+      })
+      
+      // Подключенные игроки (только для мастера)
+      if (state.role === 'master') {
+        state.connections.forEach(entry => {
+          if (entry.userId) {
+            profiles.set(entry.userId, {
+              userId: entry.userId,
+              nickname: entry.alias,
+              avatar: entry.avatar
+            })
+          }
+        })
+      }
+      
+      // Мастер (для игроков)
+      if (state.role === 'player' && state.masterProfile) {
+        profiles.set(state.masterProfile.userId, {
+          userId: state.masterProfile.userId,
+          nickname: state.masterProfile.nickname,
+          avatar: state.masterProfile.avatar
+        })
+      }
+      
+      return profiles
     }
   },
   actions: {
@@ -176,6 +214,15 @@ export const useSessionStore = defineStore('session', {
       this.disconnect({ resetRole: false })
       this.addMessage(systemMessage('Вы вышли из комнаты.'))
     },
+    createNewRoom() {
+      // Принудительное создание новой комнаты с очисткой истории
+      this.disconnect({ resetRole: false })
+      this.role = 'master'
+      this.roomId = ''
+      this.messages = []
+      this.masterProfile = null
+      this.createRoom()
+    },
     async createRoom() {
       if (this.role !== 'master') {
         this.setRole('master')
@@ -192,6 +239,12 @@ export const useSessionStore = defineStore('session', {
       this.status = 'connecting'
       const peer = new Peer(this.roomId, peerConfig)
       this.peer = peer
+      
+      // Устанавливаем коллбэк для уведомления об изменениях профиля
+      const userStore = useUserStore()
+      userStore.setProfileUpdateCallback((userId, nickname, avatar) => {
+        this.broadcastProfileUpdate(userId, nickname, avatar)
+      })
       
       peer.on('open', (id) => {
         this.peerId = id
@@ -234,14 +287,44 @@ export const useSessionStore = defineStore('session', {
     },
     handleIncomingConnection(conn) {
       const alias = conn.metadata?.alias ?? `Игрок ${conn.peer.slice(-4)}`
-      const entry = { peerId: conn.peer, alias, ready: false, conn }
-      this.connections.push(entry)
+      const avatar = conn.metadata?.avatar ?? null
+      const userId = conn.metadata?.userId ?? conn.peer
+      
+      // Проверяем, есть ли уже соединение с таким userId
+      const existingEntry = this.connections.find(c => c.userId === userId)
+      
+      let entry
+      if (existingEntry) {
+        // Обновляем существующее соединение
+        existingEntry.peerId = conn.peer
+        existingEntry.alias = alias
+        existingEntry.avatar = avatar
+        existingEntry.conn = conn
+        existingEntry.ready = false
+        entry = existingEntry
+      } else {
+        // Создаем новое соединение
+        entry = { peerId: conn.peer, alias, avatar, userId, ready: false, conn }
+        this.connections.push(entry)
+      }
       
       conn.on('open', () => {
         entry.ready = true
         this.status = 'in-room'
         this.addMessage(systemMessage(`${alias} подключился к комнате.`))
         conn.send(systemMessage('Вы в комнате. Поприветствуйте остальных!'))
+        
+        // Отправляем игроку свой профиль
+        const userStore = useUserStore()
+        const masterProfilePayload = {
+          id: createId(),
+          type: 'profile-update',
+          userId: userStore.userId,
+          nickname: userStore.nickname,
+          avatar: userStore.avatar,
+          time: Date.now()
+        }
+        conn.send(masterProfilePayload)
         
         // Отправляем игроку последние N сообщений для синхронизации
         const recentMessages = this.messages.slice(-50)
@@ -253,16 +336,33 @@ export const useSessionStore = defineStore('session', {
       })
       
       conn.on('data', (payload) => {
-        this.addMessage(payload)
-        this.broadcastPayload(payload, conn.peer)
+        // Обработка обновления профиля
+        if (payload.type === 'profile-update') {
+          this.handleProfileUpdate(payload)
+          // Транслируем обновление остальным участникам
+          this.broadcastPayload(payload, conn.peer)
+        } else {
+          this.addMessage(payload)
+          this.broadcastPayload(payload, conn.peer)
+        }
       })
       
       conn.on('close', () => {
-        this.connections = this.connections.filter((item) => item.conn !== conn)
-        this.addMessage(systemMessage(`${alias} отключился.`))
-        if (this.connections.length === 0) {
-          this.status = 'ready'
-        }
+        // Помечаем соединение как неактивное, но не удаляем сразу
+        // (может быть переподключение)
+        entry.ready = false
+        
+        // Удаляем только если это действительно старое соединение
+        setTimeout(() => {
+          // Если за 5 секунд не переподключился, удаляем
+          if (entry.conn === conn && !entry.ready) {
+            this.connections = this.connections.filter((item) => item !== entry)
+            this.addMessage(systemMessage(`${entry.alias} отключился.`))
+            if (this.connections.length === 0) {
+              this.status = 'ready'
+            }
+          }
+        }, 5000)
       })
       
       conn.on('error', (err) => {
@@ -293,6 +393,12 @@ export const useSessionStore = defineStore('session', {
       const peer = new Peer(undefined, peerConfig)
       this.peer = peer
       
+      // Устанавливаем коллбэк для уведомления об изменениях профиля
+      const userStore = useUserStore()
+      userStore.setProfileUpdateCallback((userId, nickname, avatar) => {
+        this.broadcastProfileUpdate(userId, nickname, avatar)
+      })
+      
       peer.on('open', (id) => {
         this.peerId = id
         this.connectToMaster(trimmed)
@@ -321,8 +427,14 @@ export const useSessionStore = defineStore('session', {
     },
     connectToMaster(roomCode) {
       if (!this.peer) return
-      const alias = `Игрок ${this.peerId.slice(-4)}`
-      const conn = this.peer.connect(roomCode, { metadata: { alias } })
+      const userStore = useUserStore()
+      const alias = userStore.displayName
+      const avatar = userStore.avatar
+      const userId = userStore.userId
+      
+      const conn = this.peer.connect(roomCode, { 
+        metadata: { alias, avatar, userId } 
+      })
       this.activeConnection = conn
       
       conn.on('open', () => {
@@ -333,7 +445,20 @@ export const useSessionStore = defineStore('session', {
       })
       
       conn.on('data', (payload) => {
-        this.addMessage(payload)
+        // Обработка обновления профиля
+        if (payload.type === 'profile-update') {
+          this.handleProfileUpdate(payload)
+        } else {
+          // При первом сообщении от мастера сохраняем его профиль
+          if (!this.masterProfile && payload.userId && payload.type === 'chat') {
+            this.masterProfile = {
+              userId: payload.userId,
+              nickname: null, // Будет заполнено при profile-update
+              avatar: null
+            }
+          }
+          this.addMessage(payload)
+        }
       })
       
       conn.on('close', () => {
@@ -364,13 +489,13 @@ export const useSessionStore = defineStore('session', {
         this.error = 'Нет активного соединения.'
         return
       }
+      const userStore = useUserStore()
       const payload = {
         id: createId(),
         type: 'chat',
         text: content,
-        sender: this.role === 'master' ? 'Мастер' : 'Игрок',
+        userId: userStore.userId, // Ссылка на ID пользователя
         senderRole: this.role ?? 'guest',
-        senderId: this.peerId || this.peer.id,
         time: Date.now()
       }
       this.addMessage(payload)
@@ -388,6 +513,51 @@ export const useSessionStore = defineStore('session', {
           entry.conn.send(payload)
         }
       })
+    },
+    handleProfileUpdate(payload) {
+      // Обновляем профиль пользователя в connections
+      const { userId, nickname, avatar } = payload
+      if (!userId) return
+      
+      if (this.role === 'master') {
+        // Мастер обновляет данные игрока
+        const connection = this.connections.find(c => c.userId === userId)
+        if (connection) {
+          if (nickname !== undefined) connection.alias = nickname
+          if (avatar !== undefined) connection.avatar = avatar
+          
+          this.addMessage(systemMessage(`${nickname} обновил профиль.`))
+        }
+      } else if (this.role === 'player') {
+        // Игрок обновляет данные мастера
+        if (!this.masterProfile) {
+          this.masterProfile = { userId, nickname, avatar }
+        } else {
+          if (nickname !== undefined) this.masterProfile.nickname = nickname
+          if (avatar !== undefined) this.masterProfile.avatar = avatar
+        }
+        
+        if (nickname) {
+          this.addMessage(systemMessage(`${nickname} обновил профиль.`))
+        }
+      }
+    },
+    broadcastProfileUpdate(userId, nickname, avatar) {
+      const payload = {
+        id: createId(),
+        type: 'profile-update',
+        userId,
+        nickname,
+        avatar,
+        time: Date.now()
+      }
+      
+      // Отправляем всем подключенным пирам
+      if (this.role === 'master') {
+        this.broadcastPayload(payload)
+      } else if (this.activeConnection?.open) {
+        this.activeConnection.send(payload)
+      }
     },
     addMessage(payload) {
       if (!payload) return

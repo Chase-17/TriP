@@ -1,0 +1,46 @@
+{
+  "subraces": [
+    {
+      "id": "storm",
+      "name": "Грозные",
+      "nameEn": "Storm",
+      "aspect": "war",
+      "description": "Те, кто связан с аспектом Войны"
+    },
+    {
+      "id": "light",
+      "name": "Светлые",
+      "nameEn": "Light",
+      "aspect": "knowledge",
+      "description": "Те, кто связан с аспектом Знания"
+    },
+    {
+      "id": "high",
+      "name": "Высшие",
+      "nameEn": "High",
+      "aspect": "society",
+      "description": "Те, кто связан с аспектом Общества"
+    },
+    {
+      "id": "dusk",
+      "name": "Сумеречные",
+      "nameEn": "Dusk",
+      "aspect": "shadow",
+      "description": "Те, кто связан с аспектом Тени"
+    },
+    {
+      "id": "moon",
+      "name": "Лунные",
+      "nameEn": "Moon",
+      "aspect": "mysticism",
+      "description": "Те, кто связан с аспектом Мистики"
+    },
+    {
+      "id": "wild",
+      "name": "Вольные",
+      "nameEn": "Wild",
+      "aspect": "nature",
+      "description": "Те, кто связан с аспектом Природы"
+    }
+  ]
+}

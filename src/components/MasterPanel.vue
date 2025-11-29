@@ -13,7 +13,13 @@ const canCopy = computed(() => showRoom.value && !isBusy.value)
 
 const handleCreate = () => {
   if (isBusy.value) return
-  session.createRoom()
+  if (showRoom.value) {
+    // Если комната уже создана, создаем новую
+    session.createNewRoom()
+  } else {
+    // Первое создание или восстановление
+    session.createRoom()
+  }
 }
 
 const copyRoomId = async () => {
