@@ -624,9 +624,9 @@ const showClasses = computed(() => step.value === 4)
 
 <template>
   <div class="fixed inset-0 z-50 flex flex-col lg:flex-row bg-slate-950 select-none">
-    <!-- Main Canvas Area -->
+    <!-- Main Canvas Area - Always Square, responsive sizing -->
     <div 
-      class="flex-1 relative overflow-hidden touch-none"
+      class="canvas-container relative overflow-hidden touch-none bg-slate-950 flex-shrink-0"
       @wheel="handleWheel"
       @mousedown="handleMouseDown"
       @mousemove="handleMouseMove"
@@ -1002,8 +1002,8 @@ const showClasses = computed(() => step.value === 4)
       </svg>
     </div>
 
-    <!-- Info Panel (responsive: bottom on mobile, right on desktop) -->
-    <div class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 p-6 flex flex-col relative">
+    <!-- Info Panel (responsive: bottom on mobile, right on desktop) - Takes remaining space -->
+    <div class="flex-1 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col relative overflow-hidden">
       <!-- Close button -->
       <button
         type="button"
@@ -1013,60 +1013,63 @@ const showClasses = computed(() => step.value === 4)
         <span class="text-2xl">&times;</span>
       </button>
       
-      <!-- Title -->
-      <div class="mb-4">
-        <h2 class="text-2xl font-bold text-slate-100">
-          {{ step === 1 ? 'Выберите пол' : 
-             step === 2 ? 'Выберите расу' : 
-             step === 3 ? 'Выберите подрасу' : 
-             step === 4 ? 'Выберите класс' : 
-             step === 5 ? 'Распределите характеристики' : 
-             'Выберите навыки' }}
-        </h2>
-        <p class="text-sm text-slate-400 mt-1">
-          {{ step === 1 ? 'Выберите пол персонажа для начала' :
-             step === 2 ? 'Выберите расу, расположенную между двумя аспектами' :
-             step === 3 ? 'Подраса добавляет связь с одним из аспектов' :
-             step === 4 ? 'Выберите класс персонажа' :
-             step === 5 ? 'Распределите характеристики' :
-             'Выберите навыки персонажа' }}
-        </p>
-      </div>
+      <!-- Scrollable content area -->
+      <div class="flex-1 overflow-y-auto p-6 pb-0">
+        <!-- Title -->
+        <div class="mb-4">
+          <h2 class="text-2xl font-bold text-slate-100">
+            {{ step === 1 ? 'Выберите пол' : 
+               step === 2 ? 'Выберите расу' : 
+               step === 3 ? 'Выберите подрасу' : 
+               step === 4 ? 'Выберите класс' : 
+               step === 5 ? 'Распределите характеристики' : 
+               'Выберите навыки' }}
+          </h2>
+          <p class="text-sm text-slate-400 mt-1">
+            {{ step === 1 ? 'Выберите пол персонажа для начала' :
+               step === 2 ? 'Выберите расу, расположенную между двумя аспектами' :
+               step === 3 ? 'Подраса добавляет связь с одним из аспектов' :
+               step === 4 ? 'Выберите класс персонажа' :
+               step === 5 ? 'Распределите характеристики' :
+               'Выберите навыки персонажа' }}
+          </p>
+        </div>
 
-      <!-- Details area -->
-      <div class="flex-1 overflow-y-auto">
-        <!-- Race details (step 2) -->
-        <div v-if="step === 2 && selectedRace" class="space-y-4">
-          <div>
-            <h3 class="text-lg font-semibold text-slate-100 mb-2">{{ selectedRace.name }}</h3>
-            <p class="text-sm text-slate-300">{{ selectedRace.description }}</p>
+        <!-- Details area -->
+        <div class="pb-6">
+          <!-- Race details (step 2) -->
+          <div v-if="step === 2 && selectedRace" class="space-y-4">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-100 mb-2">{{ selectedRace.name }}</h3>
+              <p class="text-sm text-slate-300">{{ selectedRace.description }}</p>
+            </div>
+
+            <div>
+              <h4 class="text-sm font-semibold text-slate-400 mb-2">Особенности:</h4>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="trait in selectedRace.traits"
+                  :key="trait"
+                  class="px-2 py-1 rounded text-xs bg-sky-500/20 text-sky-300"
+                >
+                  {{ trait }}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div>
-            <h4 class="text-sm font-semibold text-slate-400 mb-2">Особенности:</h4>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="trait in selectedRace.traits"
-                :key="trait"
-                class="px-2 py-1 rounded text-xs bg-sky-500/20 text-sky-300"
-              >
-                {{ trait }}
-              </span>
+          <!-- Subrace details (step 3) -->
+          <div v-if="step === 3 && selectedSubrace" class="space-y-4">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-100 mb-2">{{ selectedSubrace.name }}</h3>
+              <p class="text-sm text-slate-300">{{ selectedSubrace.description }}</p>
             </div>
           </div>
         </div>
-
-        <!-- Subrace details (step 3) -->
-        <div v-if="step === 3 && selectedSubrace" class="space-y-4">
-          <div>
-            <h3 class="text-lg font-semibold text-slate-100 mb-2">{{ selectedSubrace.name }}</h3>
-            <p class="text-sm text-slate-300">{{ selectedSubrace.description }}</p>
-          </div>
-        </div>
       </div>
 
-      <!-- Actions -->
-      <div class="mt-6 flex gap-3">
+      <!-- Fixed Actions at bottom -->
+      <div class="p-6 pt-4 border-t border-white/5 bg-slate-900 flex gap-3 flex-shrink-0">
         <button
           v-if="step > 1"
           type="button"
@@ -1106,6 +1109,21 @@ const showClasses = computed(() => step.value === 4)
 </template>
 
 <style scoped>
+/* Canvas container - always square, responsive sizing */
+.canvas-container {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-width: min(100vh, 100vw);
+  max-height: 100vh;
+}
+
+/* On desktop (lg and up), reserve space for info panel */
+@media (min-width: 1024px) {
+  .canvas-container {
+    max-width: min(100vh, calc(100vw - 24rem));
+  }
+}
+
 /* Smooth zoom transition, but not for pan (would make dragging laggy) */
 .canvas-group {
   transition: transform 0.2s ease-out;
