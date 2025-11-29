@@ -33,7 +33,7 @@ const formData = ref({
 // Canvas state
 const canvasSize = 800 // Content size (positions calculated based on this)
 const viewBoxSize = 1600 // Larger viewBox for pan space
-const zoom = ref(1.55) // Start at 155% zoom - maximizes schema while keeping it fully visible
+const zoom = ref(1.9) // Start at 190% zoom - larger schema while keeping fully visible
 const pan = ref({ x: 0, y: 0 })
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
@@ -255,13 +255,22 @@ const handleWheel = (event) => {
   const newZoom = Math.max(1, Math.min(4, zoom.value + delta))
   
   if (newZoom !== zoom.value) {
-    // Zoom to mouse position
-    const zoomFactor = newZoom / zoom.value
+    // Convert mouse position to viewBox coordinates
+    const viewBoxX = (mouseX / rect.width) * viewBoxSize
+    const viewBoxY = (mouseY / rect.height) * viewBoxSize
     
-    // Adjust pan to keep mouse position stationary
+    // Account for the complex transform: translate(center + pan) scale(zoom) translate(-contentCenter)
+    const centerOffset = viewBoxSize / 2
+    const contentCenter = canvasSize / 2
+    
+    // Calculate position in content space before zoom
+    const contentX = (viewBoxX - centerOffset - pan.value.x) / zoom.value + contentCenter
+    const contentY = (viewBoxY - centerOffset - pan.value.y) / zoom.value + contentCenter
+    
+    // Calculate new pan to keep content position under mouse
     pan.value = {
-      x: mouseX - (mouseX - pan.value.x) * zoomFactor,
-      y: mouseY - (mouseY - pan.value.y) * zoomFactor
+      x: viewBoxX - centerOffset - (contentX - contentCenter) * newZoom,
+      y: viewBoxY - centerOffset - (contentY - contentCenter) * newZoom
     }
     
     zoom.value = newZoom
@@ -380,18 +389,34 @@ const handleTouchMove = (event) => {
       touch2.clientY - touch1.clientY
     )
     
-    // Calculate center point
+    // Get SVG rect for coordinate conversion
+    const svg = event.currentTarget.closest('svg')
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    
+    // Calculate center point in screen coordinates
     const centerX = (touch1.clientX + touch2.clientX) / 2
     const centerY = (touch1.clientY + touch2.clientY) / 2
     
+    // Convert to viewBox coordinates
+    const viewBoxX = ((centerX - rect.left) / rect.width) * viewBoxSize
+    const viewBoxY = ((centerY - rect.top) / rect.height) * viewBoxSize
+    
     // Calculate new zoom
     const newZoom = Math.max(1, Math.min(4, touchStartZoom.value * (distance / touchStartDistance.value)))
-    const zoomFactor = newZoom / zoom.value
     
-    // Zoom to center point
+    // Account for the complex transform
+    const centerOffset = viewBoxSize / 2
+    const contentCenter = canvasSize / 2
+    
+    // Calculate position in content space before zoom
+    const contentX = (viewBoxX - centerOffset - touchStartPan.value.x) / touchStartZoom.value + contentCenter
+    const contentY = (viewBoxY - centerOffset - touchStartPan.value.y) / touchStartZoom.value + contentCenter
+    
+    // Calculate new pan to keep content position under touch center
     pan.value = {
-      x: centerX - (centerX - touchStartPan.value.x) * zoomFactor,
-      y: centerY - (centerY - touchStartPan.value.y) * zoomFactor
+      x: viewBoxX - centerOffset - (contentX - contentCenter) * newZoom,
+      y: viewBoxY - centerOffset - (contentY - contentCenter) * newZoom
     }
     
     zoom.value = newZoom
@@ -407,7 +432,7 @@ const handleTouchEnd = () => {
 }
 
 const resetView = () => {
-  zoom.value = 1.55 // Reset to default 155% zoom - maximizes schema visibility
+  zoom.value = 1.9 // Reset to default 190% zoom
   pan.value = { x: 0, y: 0 }
 }
 
@@ -508,17 +533,25 @@ const handleCanvasDoubleClick = (event) => {
   const clickX = event.clientX - rect.left
   const clickY = event.clientY - rect.top
   
-  // Calculate click position in canvas space (accounting for current transform)
-  const canvasX = (clickX - pan.value.x) / zoom.value
-  const canvasY = (clickY - pan.value.y) / zoom.value
+  // Convert to viewBox coordinates
+  const viewBoxX = (clickX / rect.width) * viewBoxSize
+  const viewBoxY = (clickY / rect.height) * viewBoxSize
   
-  // Toggle between default (1.55x) and zoomed (2.8x)
-  const newZoom = zoom.value < 2.2 ? 2.8 : 1.55
+  // Account for the complex transform
+  const centerOffset = viewBoxSize / 2
+  const contentCenter = canvasSize / 2
   
-  // Keep the clicked point stationary
+  // Calculate position in content space before zoom
+  const contentX = (viewBoxX - centerOffset - pan.value.x) / zoom.value + contentCenter
+  const contentY = (viewBoxY - centerOffset - pan.value.y) / zoom.value + contentCenter
+  
+  // Toggle between default (1.9x) and zoomed (3.2x)
+  const newZoom = zoom.value < 2.5 ? 3.2 : 1.9
+  
+  // Calculate new pan to keep content position under click point
   pan.value = {
-    x: clickX - canvasX * newZoom,
-    y: clickY - canvasY * newZoom
+    x: viewBoxX - centerOffset - (contentX - contentCenter) * newZoom,
+    y: viewBoxY - centerOffset - (contentY - contentCenter) * newZoom
   }
   
   zoom.value = newZoom
