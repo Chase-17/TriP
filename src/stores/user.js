@@ -9,12 +9,13 @@ export const useUserStore = defineStore('user', {
     characters: [], // Массив персонажей пользователя
     activeCharacterId: null, // ID активного персонажа
     currentView: 'chat', // chat | character-sheet | battle-map
+    showCharacterWizard: false, // Открыт ли визард создания персонажа
     _profileUpdateCallback: null // Внутренний коллбэк для уведомления об изменениях
   }),
   
   persist: {
     key: 'trip-user-v1',
-    paths: ['userId', 'nickname', 'avatar', 'characters', 'activeCharacterId']
+    paths: ['userId', 'nickname', 'avatar', 'characters', 'activeCharacterId', 'currentView', 'showCharacterWizard']
   },
   
   getters: {
@@ -80,12 +81,31 @@ export const useUserStore = defineStore('user', {
       const newCharacter = {
         id,
         name: character.name || 'Безымянный',
+        portrait: character.portrait || null,
+        gender: character.gender || null,
+        race: character.race || null,
+        subrace: character.subrace || null,
         avatar: character.avatar || generateAvatar(character.name || 'Character'),
         class: character.class || '',
         level: character.level || 1,
         hp: character.hp || { current: 10, max: 10 },
+        healthType: character.healthType || 'hp', // 'hp' или 'wounds'
+        wounds: character.wounds || {
+          scratch: { current: 0 },
+          light: { current: 0 },
+          heavy: { current: 0 },
+          deadly: { current: 0 }
+        },
         stats: character.stats || {},
         skills: character.skills || [],
+        equipment: character.equipment || {
+          armor: 'clothes',
+          weaponSets: [
+            { name: 'Набор 1', weapons: [] },
+            { name: 'Набор 2', weapons: [] }
+          ],
+          activeSetIndex: 0
+        },
         inventory: character.inventory || [],
         notes: character.notes || '',
         createdAt: Date.now()
@@ -121,8 +141,35 @@ export const useUserStore = defineStore('user', {
       }
     },
     
+    updateCharacter(updatedCharacter) {
+      const index = this.characters.findIndex(c => c.id === updatedCharacter.id)
+      if (index !== -1) {
+        this.characters[index] = updatedCharacter
+      }
+    },
+    
+    deleteCharacter(characterId) {
+      this.characters = this.characters.filter(c => c.id !== characterId)
+      // Если удаляем активного персонажа, сбрасываем выбор
+      if (this.activeCharacterId === characterId) {
+        this.activeCharacterId = this.characters.length > 0 ? this.characters[0].id : null
+      }
+    },
+    
     setCurrentView(view) {
       this.currentView = view
+    },
+    
+    openCharacterWizard() {
+      this.showCharacterWizard = true
+      // Автоматически переключаемся на вкладку персонажа
+      if (this.currentView !== 'character-sheet') {
+        this.currentView = 'character-sheet'
+      }
+    },
+    
+    closeCharacterWizard() {
+      this.showCharacterWizard = false
     },
     
     reset() {

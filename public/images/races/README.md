@@ -9,16 +9,20 @@ races/
 ├── {raceId}/           # Папка для каждой расы (dwarf, human, elf, и т.д.)
 │   ├── m/              # Мужские портреты
 │   │   ├── base.png    # Базовый портрет (обязательный)
-│   │   ├── war.png     # Портрет подрасы "Война"
-│   │   ├── knowledge.png
-│   │   ├── society.png
-│   │   ├── shadow.png
-│   │   ├── mysticism.png
-│   │   └── nature.png
+│   │   ├── w.png       # Портрет подрасы "Война" (War)
+│   │   ├── k.png       # Портрет подрасы "Знание" (Knowledge)
+│   │   ├── c.png       # Портрет подрасы "Общество" (Community)
+│   │   ├── s.png       # Портрет подрасы "Тень" (Shadow)
+│   │   ├── m.png       # Портрет подрасы "Мистика" (Mysticism)
+│   │   └── n.png       # Портрет подрасы "Природа" (Nature)
 │   └── f/              # Женские портреты
 │       ├── base.png    # Базовый портрет (обязательный)
-│       ├── war.png
-│       └── ...
+│       ├── w.png       # War
+│       ├── k.png       # Knowledge
+│       ├── c.png       # Community
+│       ├── s.png       # Shadow
+│       ├── m.png       # Mysticism
+│       └── n.png       # Nature
 ```
 
 **Размер**: 512x512px или выше  
@@ -26,15 +30,21 @@ races/
 
 #### Логика загрузки в редакторе персонажа:
 
-1. Если выбрана подраса (аспект): `/races/{raceId}/{gender}/{aspectId}.png`
+1. Если выбрана подраса (аспект): `/races/{raceId}/{gender}/{shortCode}.png` где shortCode:
+   - `w` = War (Война)
+   - `k` = Knowledge (Знание)
+   - `c` = Community (Общество)
+   - `s` = Shadow (Тень)
+   - `m` = Mysticism (Мистика)
+   - `n` = Nature (Природа)
 2. Если подраса не выбрана или файл не найден: `/races/{raceId}/{gender}/base.png`
 3. Fallback на старую структуру: `/races/portraits/{raceId}_{gender}.png`
 
 #### Список рас (12 штук):
 dwarf, human, tiefling, drow, goblin, halfelf, halfling, halforc, dragonborn, elf, gith, gnome
 
-#### Список аспектов (6 штук):
-war, knowledge, society, shadow, mysticism, nature
+#### Коды аспектов (6 букв):
+w, k, c, s, m, n (War, Knowledge, Community, Shadow, Mysticism, Nature)
 
 **Всего файлов**: 2 пола × 12 рас × 7 вариантов = **168 портретов**
 

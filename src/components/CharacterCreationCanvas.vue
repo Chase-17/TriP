@@ -1,34 +1,30 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Icon } from '@iconify/vue'
+import { useCharacterCreationStore } from '@/stores/characterCreation'
+import ClassStatsAndSkills from './ClassStatsAndSkills.vue'
+import AspectChart from './AspectChart.vue'
+import EquipmentSelector from './EquipmentSelector.vue'
+import CharacterFinalization from './CharacterFinalization.vue'
 import racesData from '@/data/races.json'
 import aspectsData from '@/data/aspects.json'
 import subracesData from '@/data/subraces.json'
+import classesData from '@/data/classes.json'
 
 const emit = defineEmits(['close', 'created'])
 
+// ===== STORE =====
+const creationStore = useCharacterCreationStore()
+
 // ===== STATE =====
-const step = ref(1) // 1: gender, 2: race, 3: subrace, 4: class, 5: stats, 6: skills
+const step = computed({
+  get: () => creationStore.step,
+  set: (value) => creationStore.setStep(value)
+})
 const totalSteps = 6
 
-// Form data
-const formData = ref({
-  gender: 'm',
-  race: null,
-  subrace: null,
-  class: null,
-  name: '',
-  stats: {
-    might: 10,
-    reason: 10,
-    charisma: 10,
-    cunning: 10,
-    intuition: 10,
-    perception: 10
-  },
-  skills: [],
-  avatar: null
-})
+// Form data - используем store
+const formData = computed(() => creationStore.formData)
 
 // Canvas state
 const canvasSize = 800 // Content size (positions calculated based on this)
@@ -38,6 +34,11 @@ const pan = ref({ x: 0, y: 0 })
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
 const isDragging = ref(false) // Track if user is dragging vs clicking
+
+onMounted(() => {
+  // При монтировании компонента восстанавливаем состояние из store
+  console.log('Восстановлено состояние:', creationStore.step, creationStore.formData)
+})
 const dragThreshold = 5 // pixels to move before considering it a drag
 
 // Touch state
@@ -49,6 +50,7 @@ const touchStartPan = ref({ x: 0, y: 0 })
 const hoveredRace = ref(null)
 const hoveredAspect = ref(null)
 const clickedAspect = ref(null) // For highlighting races connected to clicked aspect
+const hoveredClass = ref(null)
 
 // Animation state
 const transitioning = ref(false)
@@ -62,10 +64,21 @@ const lastClickTime = ref(0)
 const lastClickTarget = ref(null)
 const DOUBLE_CLICK_DELAY = 300 // ms
 
+// Stats and skills component ref
+const statsAndSkillsRef = ref(null)
+const statsAndSkillsData = ref({
+  stats: { ...creationStore.formData.stats },
+  skills: { ...creationStore.formData.skills }
+})
+
+// Equipment validation
+const equipmentValid = ref(true)
+
 // ===== DATA =====
 const races = racesData.races
 const aspects = aspectsData.aspects
 const allAspects = aspectsData.metadata.circularOrder
+const classes = classesData.classes
 
 // ===== COMPUTED =====
 const selectedRace = computed(() => races.find(r => r.id === formData.value.race))
@@ -115,9 +128,20 @@ const canProceed = computed(() => {
     case 1: return formData.value.gender !== null
     case 2: return formData.value.race !== null
     case 3: return formData.value.subrace !== null
-    case 4: return formData.value.class !== null
-    case 5: return true
-    case 6: return true
+    case 4: {
+      // Need class selected AND all skills chosen
+      if (!formData.value.class) return false
+      const skills = statsAndSkillsData.value.skills
+      return skills.fromClass && skills.fromAspect1 && skills.fromAspect2
+    }
+    case 5: {
+      // Need equipment validation to pass
+      return equipmentValid.value && formData.value.equipment.armor !== null
+    }
+    case 6: {
+      // Need name and portrait
+      return formData.value.name.trim().length > 0 && formData.value.portrait !== null
+    }
     default: return false
   }
 })
@@ -164,13 +188,36 @@ const getAspectIcon = (aspectId) => {
   return aspect?.icon || 'game-icons:perspective-dice-six-faces-random'
 }
 
+const getWealthDescription = (wealth) => {
+  if (wealth <= 1) return 'Нищий путешественник без гроша за душой'
+  if (wealth <= 3) return 'Бедняк с минимальными средствами'
+  if (wealth <= 5) return 'Обычный искатель приключений'
+  if (wealth <= 7) return 'Состоятельный авантюрист'
+  if (wealth <= 9) return 'Богатый и влиятельный персонаж'
+  return 'Невероятно богатый аристократ'
+}
+
+// Map aspect IDs to single-letter codes for portrait filenames
+const getAspectShortCode = (aspectId) => {
+  const mapping = {
+    'war': 'w',
+    'knowledge': 'k',
+    'community': 'c',
+    'shadow': 's',
+    'mysticism': 'm',
+    'nature': 'n'
+  }
+  return mapping[aspectId] || aspectId
+}
+
 // Get race image URL with optional subrace (aspect)
-// Structure: /images/races/{raceId}/{gender}/base.png or {aspectId}.png
+// Structure: /images/races/{raceId}/{gender}/base.png or {shortCode}.png (w/k/c/s/m/n)
 // Fallback: subrace portrait → base portrait
 const getRaceImageUrl = (raceId, gender, aspectId = null) => {
   if (aspectId) {
-    // Try subrace portrait first
-    return `/images/races/${raceId}/${gender}/${aspectId}.png`
+    // Use short code for subrace portrait (w/k/c/s/m/n)
+    const shortCode = getAspectShortCode(aspectId)
+    return `/images/races/${raceId}/${gender}/${shortCode}.png`
   }
   // Base portrait
   return `/images/races/${raceId}/${gender}/base.png`
@@ -182,10 +229,11 @@ const handleImageError = (event, raceId, gender, aspectId = null) => {
   if (!imgElement) return
   
   const currentSrc = imgElement.src || ''
+  const shortCode = aspectId ? getAspectShortCode(aspectId) : null
   
   // Check if this is a subrace portrait that failed
-  if (aspectId && currentSrc.includes(`/${raceId}/${gender}/${aspectId}.png`)) {
-    console.log(`Subrace portrait not found: ${raceId}/${gender}/${aspectId}.png, falling back to base`)
+  if (aspectId && shortCode && currentSrc.includes(`/${raceId}/${gender}/${shortCode}.png`)) {
+    console.log(`Subrace portrait not found: ${raceId}/${gender}/${shortCode}.png (aspect: ${aspectId}), falling back to base`)
     // Fallback to base portrait
     imgElement.src = `/images/races/${raceId}/${gender}/base.png`
     return
@@ -206,12 +254,288 @@ const handleImageError = (event, raceId, gender, aspectId = null) => {
 const getHexagonPath = (cx, cy, size) => {
   const points = []
   for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 6
+    // Начинаем с угла 0° (правая сторона) для flat-top шестиугольника
+    const angle = (Math.PI / 3) * i
     const x = cx + size * Math.cos(angle)
     const y = cy + size * Math.sin(angle)
     points.push(`${x},${y}`)
   }
   return points.join(' ')
+}
+
+// Generate path for a hexagon arc (partial border)
+// startVertex: 0-5 (which vertex to start from)
+// endVertex: 0-6 (which vertex to end at)
+const getHexagonArc = (cx, cy, size, startVertex, endVertex) => {
+  const points = []
+  
+  // Generate points from startVertex to endVertex
+  for (let i = startVertex; i <= endVertex; i++) {
+    const angle = (Math.PI / 3) * i
+    const x = cx + size * Math.cos(angle)
+    const y = cy + size * Math.sin(angle)
+    points.push([x, y])
+  }
+  
+  // Create path string: M (move to first point) then L (line to) each subsequent point
+  if (points.length === 0) return ''
+  
+  let pathData = `M ${points[0][0]},${points[0][1]}`
+  for (let i = 1; i < points.length; i++) {
+    pathData += ` L ${points[i][0]},${points[i][1]}`
+  }
+  
+  return pathData
+}
+
+// Determine which aspect is left and which is right based on their positions
+const getLeftRightAspects = (classItem) => {
+  // For outer classes, use the single aspect for both colors
+  if (isOuterClass(classItem)) {
+    const aspectId = classItem.aspects[0]
+    return { left: aspectId, right: aspectId }
+  }
+  
+  // For inner classes, determine left/right based on positions
+  const aspect1Id = classItem.aspects[0]
+  const aspect2Id = classItem.aspects[1]
+  
+  const pos1 = getAspectPosition(aspect1Id)
+  const pos2 = getAspectPosition(aspect2Id)
+  
+  const deltaX = Math.abs(pos1.x - pos2.x)
+  const deltaY = Math.abs(pos1.y - pos2.y)
+  
+  // If vertical alignment (deltaY > deltaX), use Y coordinate for "left/right"
+  if (deltaY > deltaX) {
+    // Top aspect is "left", bottom is "right" for consistent gradient direction
+    if (pos1.y < pos2.y) {
+      return { left: aspect1Id, right: aspect2Id }
+    } else {
+      return { left: aspect2Id, right: aspect1Id }
+    }
+  }
+  
+  // Horizontal or diagonal: compare X coordinates
+  if (pos1.x < pos2.x) {
+    return { left: aspect1Id, right: aspect2Id }
+  } else if (pos1.x > pos2.x) {
+    return { left: aspect2Id, right: aspect1Id }
+  } else {
+    // If X coordinates are equal, use first as left
+    return { left: aspect1Id, right: aspect2Id }
+  }
+}
+
+// Determine if class is "outer" (specialized) or "inner" (between aspects)
+// Outer classes: only 1 aspect edge, no class edges
+// Inner classes: 2 aspect edges
+const isOuterClass = (classItem) => {
+  const aspectEdges = classItem.edges.filter(e => e.type === 'aspect')
+  return aspectEdges.length === 1
+}
+
+// Calculate gradient angle based on aspect positions
+// Returns angle in degrees for linearGradient (0° = horizontal left to right, 90° = vertical top to bottom)
+const getGradientAngle = (classItem) => {
+  // For outer classes with single aspect, use radial direction from center
+  if (isOuterClass(classItem)) {
+    const aspectId = classItem.aspects[0]
+    const aspectPos = getAspectPosition(aspectId)
+    const centerX = canvasSize / 2
+    const centerY = canvasSize / 2
+    
+    const deltaX = aspectPos.x - centerX
+    const deltaY = aspectPos.y - centerY
+    
+    let angleDeg = Math.atan2(deltaY, deltaX) * (180 / Math.PI)
+    if (angleDeg < 0) angleDeg += 360
+    
+    return angleDeg
+  }
+  
+  // For inner classes, use direction between two aspects
+  const aspect1Id = classItem.aspects[0]
+  const aspect2Id = classItem.aspects[1]
+  
+  const pos1 = getAspectPosition(aspect1Id)
+  const pos2 = getAspectPosition(aspect2Id)
+  
+  // Calculate angle from aspect1 to aspect2
+  const deltaX = pos2.x - pos1.x
+  const deltaY = pos2.y - pos1.y
+  
+  // atan2 returns angle in radians from -π to π
+  // Convert to degrees and adjust to SVG coordinate system
+  let angleDeg = Math.atan2(deltaY, deltaX) * (180 / Math.PI)
+  
+  // Normalize to 0-360
+  if (angleDeg < 0) angleDeg += 360
+  
+  return angleDeg
+}
+
+// Calculate class position between two aspects based on edge costs
+const getClassPosition = (classItem) => {
+  const centerX = canvasSize / 2
+  const centerY = canvasSize / 2
+  
+  // Handle outer (specialized) classes - positioned beyond their aspect
+  if (isOuterClass(classItem)) {
+    const aspectId = classItem.aspects[0]
+    const aspectPos = getAspectPosition(aspectId)
+    
+    // Calculate direction from center through aspect
+    const dx = aspectPos.x - centerX
+    const dy = aspectPos.y - centerY
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    
+    // Normalize direction
+    const dirX = dx / distance
+    const dirY = dy / distance
+    
+    // Position class beyond aspect (aspect radius * 0.32, outer class at * 0.43)
+    const outerRadius = canvasSize * 0.43
+    
+    let x = centerX + dirX * outerRadius
+    let y = centerY + dirY * outerRadius
+    
+    // Check if this class has a connection to another class (meaning it's a "side" class, not pure specialist)
+    const hasClassConnection = classItem.edges.some(e => e.type === 'class')
+    
+    if (hasClassConnection) {
+      // Find the connected class to determine which direction to offset
+      const classEdge = classItem.edges.find(e => e.type === 'class')
+      const connectedClassId = classEdge?.id
+      
+      // Find the connected class and its aspect
+      const connectedClass = classes.find(c => c.id === connectedClassId)
+      if (connectedClass) {
+        const connectedAspectId = connectedClass.aspects[0]
+        
+        // Get aspect data for angles
+        const aspectData = aspects.find(a => a.id === aspectId)
+        const connectedAspectData = aspects.find(a => a.id === connectedAspectId)
+        
+        if (aspectData && connectedAspectData) {
+          const currentAngle = aspectData.position.angle
+          const connectedAngle = connectedAspectData.position.angle
+          
+          // Calculate shortest angular distance from current aspect to connected aspect
+          let angleDiff = connectedAngle - currentAngle
+          // Normalize to -180..+180 range
+          while (angleDiff > 180) angleDiff -= 360
+          while (angleDiff < -180) angleDiff += 360
+          
+          // If connected aspect is clockwise from current (positive angle), offset clockwise (+14°)
+          // If connected aspect is counterclockwise from current (negative angle), offset counterclockwise (-14°)
+          const offsetAngle = (angleDiff > 0 ? 14 : -14) * (Math.PI / 180)
+          
+          // Calculate base angle from center to aspect
+          const baseAngle = Math.atan2(dy, dx)
+          
+          // Apply offset
+          const newAngle = baseAngle + offsetAngle
+          
+          x = centerX + Math.cos(newAngle) * outerRadius
+          y = centerY + Math.sin(newAngle) * outerRadius
+        }
+      }
+    }
+    
+    return { x, y }
+  }
+  
+  // Handle inner classes - positioned between two aspects
+  const aspect1Id = classItem.aspects[0]
+  const aspect2Id = classItem.aspects[1]
+  
+  const pos1 = getAspectPosition(aspect1Id)
+  const pos2 = getAspectPosition(aspect2Id)
+  
+  // Find costs from edges
+  const edge1 = classItem.edges.find(e => e.id === aspect1Id)
+  const edge2 = classItem.edges.find(e => e.id === aspect2Id)
+  
+  const cost1 = edge1?.cost || 3
+  const cost2 = edge2?.cost || 3
+  
+  // Position is weighted average based on costs (lower cost = closer to that aspect)
+  // weight2 represents how much to move towards aspect2
+  const totalCost = cost1 + cost2
+  const weight2 = cost1 / totalCost
+  
+  let x = pos1.x + (pos2.x - pos1.x) * weight2
+  let y = pos1.y + (pos2.y - pos1.y) * weight2
+  
+  // For classes with uneven cost distribution (2-4 or 4-2), move them closer to center
+  if ((cost1 === 2 && cost2 === 4) || (cost1 === 4 && cost2 === 2)) {
+    // Calculate vector from center to class position
+    const dx = x - centerX
+    const dy = y - centerY
+    
+    // Move ~12.5% closer to center (halfway from original 25%)
+    x = centerX + dx * 0.875
+    y = centerY + dy * 0.875
+  }
+  
+  // Special handling for 3 classes that overlap in center
+  // Offset them at 120-degree angles to maintain symmetry
+  const offsetDistance = 60 // pixels (increased from 40 for better spacing)
+  
+  if (classItem.id === 'seeker') {
+    // Up (270 degrees from east = straight up)
+    y -= offsetDistance
+  } else if (classItem.id === 'heretic') {
+    // Down-right (330 degrees from north = 30 degrees below horizontal)
+    x += offsetDistance * Math.cos(-Math.PI / 6)
+    y += offsetDistance * Math.sin(Math.PI / 6) // positive = down
+  } else if (classItem.id === 'cutthroat') {
+    // Down-left (210 degrees from north = 30 degrees below horizontal on left)
+    x += offsetDistance * Math.cos(5 * Math.PI / 6)
+    y += offsetDistance * Math.sin(Math.PI / 6) // positive = down
+  }
+  
+  return { x, y }
+}
+
+// Generate curved path from class to aspect using quadratic Bezier
+// Lines end at object boundaries instead of centers
+const getClassToAspectPath = (classPos, aspectPos, curveFactor = 0.15) => {
+  // Calculate direction from class to aspect
+  const dx = aspectPos.x - classPos.x
+  const dy = aspectPos.y - classPos.y
+  const distance = Math.sqrt(dx * dx + dy * dy)
+  
+  // Normalize direction
+  const dirX = dx / distance
+  const dirY = dy / distance
+  
+  // Class hexagon radius (approximate)
+  const classRadius = 30
+  // Aspect circle radius
+  const aspectRadius = 18
+  
+  // Start point: edge of class hexagon
+  const startX = classPos.x + dirX * classRadius
+  const startY = classPos.y + dirY * classRadius
+  
+  // End point: edge of aspect circle
+  const endX = aspectPos.x - dirX * aspectRadius
+  const endY = aspectPos.y - dirY * aspectRadius
+  
+  // Calculate control point perpendicular to the line
+  const perpX = -dirY
+  const perpY = dirX
+  
+  // Control point offset from midpoint
+  const midX = (startX + endX) / 2
+  const midY = (startY + endY) / 2
+  
+  const ctrlX = midX + perpX * distance * curveFactor
+  const ctrlY = midY + perpY * distance * curveFactor
+  
+  return `M ${startX},${startY} Q ${ctrlX},${ctrlY} ${endX},${endY}`
 }
 
 const getTransitionTransform = (race) => {
@@ -447,10 +771,22 @@ const canvasTransform = computed(() => {
 })
 
 // ===== ACTIONS =====
+const handleClose = () => {
+  // Сбрасываем прогресс при закрытии окна
+  creationStore.reset()
+  emit('close')
+}
+
+const handleCreate = () => {
+  // Создаем персонажа и сбрасываем прогресс
+  emit('created', formData.value)
+  creationStore.reset()
+}
+
 const selectGender = (gender) => {
   if (isDragging.value) return // Don't select if user was dragging
   
-  formData.value.gender = gender
+  creationStore.setGender(gender)
   genderAnimating.value = true
   
   // Animate gender panels sliding away, then move to next step
@@ -476,12 +812,12 @@ const selectRace = (raceId) => {
   
   if (isDoubleClick && step.value === 2) {
     // Double-click: select and confirm immediately
-    formData.value.race = raceId
+    creationStore.setRace(raceId)
     clickedAspect.value = null // Clear aspect highlight
     confirmSelection()
   } else {
     // Single click: just select
-    formData.value.race = raceId
+    creationStore.setRace(raceId)
     clickedAspect.value = null // Clear aspect highlight when selecting race
   }
 }
@@ -497,17 +833,22 @@ const selectAspect = (aspectId) => {
     } else {
       // Click new aspect: select and clear race selection
       clickedAspect.value = aspectId
-      formData.value.race = null
+      creationStore.setRace(null)
     }
   } else if (step.value === 3) {
     // On subrace step: select subrace
-    formData.value.subrace = `${formData.value.race}-${aspectId}`
+    creationStore.setSubrace(`${formData.value.race}-${aspectId}`)
   }
 }
 
 const selectSubrace = (aspectId) => {
   if (isDragging.value) return // Don't select if user was dragging
-  formData.value.subrace = `${formData.value.race}-${aspectId}`
+  creationStore.setSubrace(`${formData.value.race}-${aspectId}`)
+}
+
+const selectClass = (classId) => {
+  if (isDragging.value) return // Don't select if user was dragging
+  creationStore.setClass(classId)
 }
 
 // Click on canvas background to deselect
@@ -516,7 +857,7 @@ const handleCanvasClick = (event) => {
   
   // Only on step 2
   if (step.value === 2) {
-    formData.value.race = null
+    creationStore.setRace(null)
     clickedAspect.value = null
   }
 }
@@ -582,8 +923,16 @@ const prevStep = () => {
 
 const confirmSelection = () => {
   if (canProceed.value) {
-    if (step.value === 2 && formData.value.race) {
-      // Trigger animation when confirming race selection
+    // Save stats and skills to store when leaving step 4
+    if (step.value === 4) {
+      creationStore.setStats(statsAndSkillsData.value.stats)
+      creationStore.setSkills(statsAndSkillsData.value.skills)
+    }
+    
+    if ((step.value === 2 && formData.value.race) || 
+        (step.value === 3 && formData.value.subrace) ||
+        (step.value === 4 && formData.value.class)) {
+      // Trigger animation when confirming race/subrace/class selection
       transitioning.value = true
       transitionDirection.value = 'forward'
       setTimeout(() => {
@@ -673,65 +1022,43 @@ const showClasses = computed(() => step.value === 4)
 
         <!-- Step 1: Gender Selection -->
         <g v-if="showGenderChoice || genderAnimating" class="gender-selection">
-          <!-- Male half -->
+          <!-- Male -->
           <g 
-            :transform="`translate(${canvasSize/2 - 100}, ${canvasSize/2})`"
-            :style="genderAnimating ? 'transition: transform 400ms ease-in; transform: translateX(-200px);' : ''"
+            class="gender-option"
+            :class="{ 'gender-sliding-left': genderAnimating }"
           >
-            <rect 
-              x="0" 
-              y="-60" 
-              width="80" 
-              height="120" 
-              rx="12"
-              :fill="formData.gender === 'm' ? '#3b82f6' : '#1e293b'"
-              :stroke="formData.gender === 'm' ? '#60a5fa' : '#334155'"
-              stroke-width="2"
-              class="cursor-pointer transition-all duration-200 hover:stroke-sky-400"
+            <image
+              :x="canvasSize/4 - 280"
+              :y="canvasSize/2 - 350"
+              width="560"
+              height="700"
+              :href="`/images/gender/male.png`"
+              class="cursor-pointer opacity-90 hover:opacity-100 transition-opacity"
+              :class="{ 'brightness-110': formData.gender === 'm' }"
               @click="selectGender('m')"
             />
-            <text 
-              x="40" 
-              y="0" 
-              text-anchor="middle" 
-              dominant-baseline="middle"
-              class="text-6xl select-none pointer-events-none"
-            >
-              ♂
-            </text>
           </g>
 
-          <!-- Female half -->
+          <!-- Female -->
           <g 
-            :transform="`translate(${canvasSize/2 + 20}, ${canvasSize/2})`"
-            :style="genderAnimating ? 'transition: transform 400ms ease-in; transform: translateX(200px);' : ''"
+            class="gender-option"
+            :class="{ 'gender-sliding-right': genderAnimating }"
           >
-            <rect 
-              x="0" 
-              y="-60" 
-              width="80" 
-              height="120" 
-              rx="12"
-              :fill="formData.gender === 'f' ? '#ec4899' : '#1e293b'"
-              :stroke="formData.gender === 'f' ? '#f472b6' : '#334155'"
-              stroke-width="2"
-              class="cursor-pointer transition-all duration-200 hover:stroke-pink-400"
+            <image
+              :x="canvasSize * 3/4 - 280"
+              :y="canvasSize/2 - 350"
+              width="560"
+              height="700"
+              :href="`/images/gender/female.png`"
+              class="cursor-pointer opacity-90 hover:opacity-100 transition-opacity"
+              :class="{ 'brightness-110': formData.gender === 'f' }"
               @click="selectGender('f')"
             />
-            <text 
-              x="40" 
-              y="0" 
-              text-anchor="middle" 
-              dominant-baseline="middle"
-              class="text-6xl select-none pointer-events-none"
-            >
-              ♀
-            </text>
           </g>
         </g>
 
-        <!-- Aspects (visible from step 2+) -->
-        <g v-if="step >= 2 && step !== 3" class="aspects">
+        <!-- Aspects (visible from step 2, but not step 3 and 4) -->
+        <g v-if="step >= 2 && step !== 3 && step !== 4" class="aspects">
           <g v-for="aspect in aspects" :key="aspect.id">
             <!-- Background circle with highlight for connected aspects or clicked aspect -->
             <circle
@@ -998,39 +1325,239 @@ const showClasses = computed(() => step.value === 4)
             />
           </g>
         </g>
+
+        <!-- Step 4: Class Selection -->
+        <g v-if="step === 4" class="class-selection">
+          <!-- Background rect for click-outside-to-deselect -->
+          <rect
+            x="0"
+            y="0"
+            :width="canvasSize"
+            :height="canvasSize"
+            fill="transparent"
+            class="cursor-default"
+            @click="() => { if (formData.class) creationStore.setClass(null) }"
+          />
+          
+          <!-- Circle connecting all aspects -->
+          <circle
+            :cx="canvasSize / 2"
+            :cy="canvasSize / 2"
+            :r="canvasSize * 0.32"
+            fill="none"
+            stroke="#ffffff"
+            stroke-width="8"
+            opacity="0.075"
+            class="pointer-events-none"
+          />
+          
+          <!-- Aspect circles (dimmed) -->
+          <g v-for="aspect in aspects" :key="`aspect-bg-${aspect.id}`">
+            <circle
+              :cx="getAspectPosition(aspect.id).x"
+              :cy="getAspectPosition(aspect.id).y"
+              r="18"
+              :fill="getAspectColor(aspect.id)"
+              :fill-opacity="
+                formData.class 
+                  ? (classes.find(c => c.id === formData.class)?.aspects.includes(aspect.id) ? 0.35 : 0.15)
+                  : 0.4
+              "
+              class="pointer-events-none transition-all duration-300"
+            />
+            <foreignObject
+              :x="getAspectPosition(aspect.id).x - 16"
+              :y="getAspectPosition(aspect.id).y - 16"
+              width="32"
+              height="32"
+              class="pointer-events-none"
+            >
+              <div 
+                class="flex items-center justify-center w-full h-full transition-opacity duration-300"
+                :class="
+                  formData.class 
+                    ? (classes.find(c => c.id === formData.class)?.aspects.includes(aspect.id) ? 'opacity-60' : 'opacity-30')
+                    : 'opacity-70'
+                "
+              >
+                <Icon :icon="aspect.icon" class="text-2xl" />
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Class connection lines (curved) -->
+          <g v-for="classItem in classes" :key="`class-lines-${classItem.id}`" class="pointer-events-none">
+            <!-- Only show lines to aspects, not to other classes -->
+            <template v-for="edge in classItem.edges.filter(e => e.type === 'aspect')" :key="`edge-${classItem.id}-${edge.id}`">
+              <!-- Shadow/glow effect for selected class -->
+              <path
+                v-if="formData.class === classItem.id"
+                :d="getClassToAspectPath(getClassPosition(classItem), getAspectPosition(edge.id))"
+                :stroke="getAspectColor(edge.id)"
+                stroke-opacity="0.6"
+                stroke-width="8"
+                fill="none"
+                class="transition-all duration-300"
+                style="filter: blur(4px)"
+              />
+              
+              <!-- Main connection line -->
+              <path
+                :d="getClassToAspectPath(getClassPosition(classItem), getAspectPosition(edge.id))"
+                :stroke="formData.class === classItem.id ? getAspectColor(edge.id) : 
+                         hoveredClass === classItem.id ? '#64748b' : '#475569'"
+                :stroke-opacity="formData.class === classItem.id ? 0.9 : 
+                                hoveredClass === classItem.id ? 0.5 : 0.2"
+                :stroke-width="formData.class === classItem.id ? 3 : 
+                              hoveredClass === classItem.id ? 2 : 1.5"
+                fill="none"
+                class="transition-all duration-300"
+              />
+            </template>
+          </g>
+
+          <!-- Dimming overlay when class is selected -->
+          <rect
+            v-if="formData.class"
+            x="0"
+            y="0"
+            :width="canvasSize"
+            :height="canvasSize"
+            fill="#0a0f1a"
+            opacity="0.85"
+            class="transition-opacity duration-300 pointer-events-none"
+          />
+          
+          <!-- Class icons -->
+          <g v-for="classItem in classes" :key="`class-${classItem.id}`">
+            <defs>
+              <!-- Градиент для внутренних классов (между двумя аспектами) -->
+              <!-- Для внешних классов - монохромный (один цвет) -->
+              <linearGradient 
+                :id="`class-gradient-${classItem.id}`"
+                :gradientTransform="`rotate(${getGradientAngle(classItem)}, 0.5, 0.5)`"
+              >
+                <stop offset="0%" :stop-color="getAspectColor(classItem.aspects[0])" />
+                <stop offset="15%" :stop-color="getAspectColor(classItem.aspects[0])" />
+                <stop offset="85%" :stop-color="getAspectColor(classItem.aspects[classItem.aspects.length > 1 ? 1 : 0])" />
+                <stop offset="100%" :stop-color="getAspectColor(classItem.aspects[classItem.aspects.length > 1 ? 1 : 0])" />
+              </linearGradient>
+              
+              <!-- Clippath для обрезки круга до шестиугольника -->
+              <clipPath :id="`hexclip-${classItem.id}`">
+                <polygon :points="getHexagonPath(0, 0, 30)" />
+              </clipPath>
+            </defs>
+            
+            <g 
+              :transform="`translate(${getClassPosition(classItem).x}, ${getClassPosition(classItem).y}) scale(${formData.class === classItem.id ? 1.5 : 1})`"
+              class="cursor-pointer transition-all duration-300"
+              :class="{ 'opacity-100': !formData.class || formData.class === classItem.id, 'opacity-40': formData.class && formData.class !== classItem.id }"
+              @click="selectClass(classItem.id)"
+              @mouseenter="hoveredClass = classItem.id"
+              @mouseleave="hoveredClass = null"
+            >
+              <!-- Градиентный круг, обрезанный до шестиугольника -->
+              <circle
+                cx="0"
+                cy="0"
+                r="30"
+                :fill="`url(#class-gradient-${classItem.id})`"
+                :fill-opacity="formData.class === classItem.id ? 0.4 : 0.25"
+                :clip-path="`url(#hexclip-${classItem.id})`"
+                class="transition-all duration-300"
+              />
+              
+              <!-- Тонкая обводка шестиугольника для чёткости -->
+              <polygon
+                :points="getHexagonPath(0, 0, 30)"
+                fill="none"
+                stroke="#ffffff"
+                :stroke-opacity="formData.class === classItem.id ? 0.3 : 0.15"
+                stroke-width="1"
+                class="transition-all duration-300"
+              />
+              
+              <!-- Class icon image -->
+              <foreignObject
+                :x="formData.class === classItem.id ? -38 : -30"
+                :y="formData.class === classItem.id ? -38 : -30"
+                :width="formData.class === classItem.id ? 76 : 60"
+                :height="formData.class === classItem.id ? 76 : 60"
+                class="pointer-events-none transition-all duration-300"
+              >
+                <img
+                  :src="`/images/classes/${classItem.id}.png`"
+                  :style="{
+                    width: '100%',
+                    height: '100%',
+                    opacity: 1,
+                    transition: 'all 0.3s'
+                  }"
+                />
+              </foreignObject>
+            </g>
+          </g>
+          
+          <!-- Highlight connected aspects when class is selected -->
+          <g v-if="formData.class" class="pointer-events-none">
+            <g v-for="aspectId in classes.find(c => c.id === formData.class)?.aspects || []" :key="`highlight-${aspectId}`">
+              <circle
+                :cx="getAspectPosition(aspectId).x"
+                :cy="getAspectPosition(aspectId).y"
+                r="22"
+                fill="none"
+                :stroke="getAspectColor(aspectId)"
+                stroke-width="2.5"
+                opacity="0.9"
+                class="transition-all duration-300"
+              />
+            </g>
+          </g>
+        </g>
         </g> <!-- Close main transform group -->
       </svg>
     </div>
 
     <!-- Info Panel (responsive: bottom on mobile, right on desktop) - Takes remaining space -->
     <div class="flex-1 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col relative overflow-hidden">
-      <!-- Close button -->
-      <button
-        type="button"
-        class="absolute top-4 right-4 w-10 h-10 rounded-lg border border-white/10 hover:bg-white/5 text-slate-300 z-10"
-        @click="emit('close')"
-      >
-        <span class="text-2xl">&times;</span>
-      </button>
+      <!-- Fixed header for all steps with navigation -->
+      <div class="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm px-6 py-4 border-b border-slate-700/50">
+        <div class="flex items-center justify-between">
+          <button
+            v-if="step > 1"
+            @click="prevStep"
+            class="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-700 border border-slate-700/50 text-slate-300 transition"
+          >
+            <Icon icon="mdi:arrow-left" class="w-5 h-5" />
+            <span class="text-sm font-medium">Назад</span>
+          </button>
+          <div v-else></div>
+          
+          <button
+            @click="handleClose"
+            class="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-900/20 hover:bg-red-900/30 border border-red-700/50 text-red-300 transition"
+          >
+            <Icon icon="mdi:close" class="w-5 h-5" />
+            <span class="text-sm font-medium">Закрыть</span>
+          </button>
+        </div>
+      </div>
       
       <!-- Scrollable content area -->
       <div class="flex-1 overflow-y-auto p-6 pb-0">
-        <!-- Title -->
-        <div class="mb-4">
+        <!-- Title (skip for step 4 and 5 as we have custom layout) -->
+        <div v-if="step !== 4 && step !== 5" class="mb-4">
           <h2 class="text-2xl font-bold text-slate-100">
             {{ step === 1 ? 'Выберите пол' : 
                step === 2 ? 'Выберите расу' : 
                step === 3 ? 'Выберите подрасу' : 
-               step === 4 ? 'Выберите класс' : 
-               step === 5 ? 'Распределите характеристики' : 
                'Выберите навыки' }}
           </h2>
           <p class="text-sm text-slate-400 mt-1">
             {{ step === 1 ? 'Выберите пол персонажа для начала' :
                step === 2 ? 'Выберите расу, расположенную между двумя аспектами' :
                step === 3 ? 'Подраса добавляет связь с одним из аспектов' :
-               step === 4 ? 'Выберите класс персонажа' :
-               step === 5 ? 'Распределите характеристики' :
                'Выберите навыки персонажа' }}
           </p>
         </div>
@@ -1065,20 +1592,108 @@ const showClasses = computed(() => step.value === 4)
               <p class="text-sm text-slate-300">{{ selectedSubrace.description }}</p>
             </div>
           </div>
+
+          <!-- Class details (step 4) -->
+          <div v-if="step === 4 && formData.class" class="space-y-6">
+            <div v-if="classes.find(c => c.id === formData.class)" class="step-4-container">
+              <!-- Main content grid: responsive based on container width -->
+              <div class="step-4-grid gap-8 mb-6">
+                <!-- Left half: Title + Image -->
+                <div class="step-4-left-column space-y-4">
+                  <div>
+                    <h3 class="text-2xl font-bold text-slate-100 mb-1">
+                      {{ classes.find(c => c.id === formData.class).name[formData.gender] }}
+                    </h3>
+                    <p class="text-sm text-slate-400">
+                      {{ classes.find(c => c.id === formData.class).nameEn }}
+                    </p>
+                  </div>
+                  
+                  <img
+                    :src="`/images/classes/${formData.class}.png`"
+                    :alt="classes.find(c => c.id === formData.class).name[formData.gender]"
+                    class="w-full aspect-square object-cover rounded-lg border-2 border-slate-700"
+                  />
+                </div>
+
+                <!-- Right half: Chart -->
+                <div class="flex items-center justify-center">
+                  <AspectChart 
+                    :stats="statsAndSkillsData.stats"
+                    :size="360"
+                    @swap-stats="statsAndSkillsRef?.swapStats()"
+                  />
+                </div>
+              </div>
+
+              <!-- Full width: Bonus calculation explanation + Swap button -->
+              <div class="bg-slate-800/30 border border-slate-700/50 rounded-lg p-5 mb-6">
+                <div class="flex items-start justify-between gap-6 flex-wrap">
+                  <div class="flex-1 text-sm text-slate-400 leading-relaxed min-w-[280px]">
+                    <p class="font-semibold text-slate-300 mb-2">Как рассчитываются бонусы проверок:</p>
+                    <p class="mb-2">
+                      Каждая проверка связана с аспектом и имеет соседние аспекты. 
+                      Бонус проверки равен максимуму из двух формул:
+                    </p>
+                    <ul class="list-disc list-inside space-y-1 ml-2">
+                      <li><span class="font-mono text-sky-300">Основной</span>: полное значение аспекта + половина (округлённая вниз) каждого соседнего</li>
+                      <li><span class="font-mono text-purple-300">Альтернативный</span>: половина (округлённая вниз) противоположного аспекта</li>
+                    </ul>
+                  </div>
+                  
+                  <button
+                    @click="statsAndSkillsRef?.swapStats()"
+                    class="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-700/50 hover:bg-slate-700 border border-slate-600/50 text-slate-300 transition"
+                  >
+                    <Icon icon="mdi:swap-horizontal" class="w-5 h-5" />
+                    <span class="text-sm font-medium">Поменять 6 ↔ 4</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Full width: Class description (if available) -->
+              <div 
+                v-if="classes.find(c => c.id === formData.class)?.description"
+                class="bg-slate-800/20 border border-slate-700/30 rounded-lg p-5 mb-6"
+              >
+                <p class="text-sm text-slate-400 leading-relaxed italic">
+                  {{ classes.find(c => c.id === formData.class).description }}
+                </p>
+              </div>
+
+              <!-- Full width: Skills selection -->
+              <ClassStatsAndSkills
+                :class-id="formData.class"
+                v-model="statsAndSkillsData"
+                ref="statsAndSkillsRef"
+                :show-stats="false"
+                :show-skills="true"
+              />
+            </div>
+          </div>
+
+          <!-- STEP 5: Equipment Selection -->
+          <div v-if="step === 5">
+            <EquipmentSelector 
+              v-model="formData.equipment"
+              @validation-change="equipmentValid = $event"
+            />
+          </div>
+
+          <!-- STEP 6: Name and Portrait -->
+          <div v-if="step === 6">
+            <CharacterFinalization
+              :name="formData.name"
+              :portrait="formData.portrait"
+              @update:name="creationStore.setName($event)"
+              @update:portrait="creationStore.setPortrait($event)"
+            />
+          </div>
         </div>
       </div>
 
       <!-- Fixed Actions at bottom -->
       <div class="p-6 pt-4 border-t border-white/5 bg-slate-900 flex gap-3 flex-shrink-0">
-        <button
-          v-if="step > 1"
-          type="button"
-          class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:bg-white/5 transition"
-          @click="prevStep"
-        >
-          Назад
-        </button>
-
         <button
           v-if="step < totalSteps"
           type="button"
@@ -1090,7 +1705,10 @@ const showClasses = computed(() => step.value === 4)
           @click="confirmSelection"
         >
           {{ step === 2 ? 'Подтвердить расу' : 
-             step === 3 ? 'Подтвердить подрасу' : 
+             step === 3 ? 'Подтвердить подрасу' :
+             step === 4 ? 'Подтвердить класс' :
+             step === 5 ? 'Подтвердить снаряжение' :
+             step === 6 ? 'Завершить' :
              'Далее' }}
         </button>
 
@@ -1099,7 +1717,7 @@ const showClasses = computed(() => step.value === 4)
           type="button"
           class="flex-1 px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-400/60 text-emerald-100 font-semibold hover:bg-emerald-500/30 transition"
           :disabled="!canProceed"
-          @click="emit('created', formData)"
+          @click="handleCreate"
         >
           Создать персонажа
         </button>
@@ -1124,6 +1742,20 @@ const showClasses = computed(() => step.value === 4)
   }
 }
 
+/* Gender selection animations - slide away horizontally */
+.gender-option {
+  transition: transform 400ms ease-in;
+  transform-origin: center center;
+}
+
+.gender-sliding-left {
+  transform: translateX(-600px);
+}
+
+.gender-sliding-right {
+  transform: translateX(600px);
+}
+
 /* Smooth zoom transition, but not for pan (would make dragging laggy) */
 .canvas-group {
   transition: transform 0.2s ease-out;
@@ -1133,5 +1765,28 @@ const showClasses = computed(() => step.value === 4)
 /* Disable transition during active panning */
 .canvas-group.panning {
   transition: none;
+}
+
+/* Step 4 responsive grid - based on container width */
+.step-4-container {
+  container-type: inline-size;
+}
+
+.step-4-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+/* Two columns when container is wide enough (≥600px) */
+@container (min-width: 600px) {
+  .step-4-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .step-4-left-column {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
 }
 </style>

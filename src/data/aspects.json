@@ -10,6 +10,11 @@
         "nameEn": "Might",
         "abbreviation": "MIG"
       },
+      "check": {
+        "name": "Конфликт",
+        "nameEn": "Conflict",
+        "description": "Проверки прямого противостояния, боя и физической силы"
+      },
       "color": "#dc2626",
       "colorName": "red",
       "icon": "game-icons:crossed-swords",
@@ -39,6 +44,11 @@
         "nameEn": "Reason",
         "abbreviation": "REA"
       },
+      "check": {
+        "name": "Порядок",
+        "nameEn": "Order",
+        "description": "Проверки знаний, логики и систематического подхода"
+      },
       "color": "#3b82f7",
       "colorName": "blue",
       "icon": "game-icons:open-book",
@@ -49,7 +59,7 @@
         "corner": "top-right",
         "description": "Верхний правый угол шестиугольника"
       },
-      "neighbors": ["war", "society"],
+      "neighbors": ["war", "community"],
       "opposite": "mysticism",
       "axis": {
         "id": "progress",
@@ -59,14 +69,19 @@
       }
     },
     {
-      "id": "society",
+      "id": "community",
       "name": "Общество",
-      "nameEn": "Society",
+      "nameEn": "Community",
       "description": "Социальные связи, лидерство, убеждение и дипломатия",
       "characteristic": {
         "name": "Харизма",
         "nameEn": "Charisma",
         "abbreviation": "CHA"
+      },
+      "check": {
+        "name": "Влияние",
+        "nameEn": "Influence",
+        "description": "Проверки социального взаимодействия и убеждения"
       },
       "color": "#f59e0b",
       "colorName": "amber",
@@ -97,6 +112,11 @@
         "nameEn": "Cunning",
         "abbreviation": "CUN"
       },
+      "check": {
+        "name": "Коварство",
+        "nameEn": "Treachery",
+        "description": "Проверки скрытности, обмана и манипуляций"
+      },
       "color": "#374151",
       "colorName": "gray",
       "icon": "game-icons:cowled",
@@ -107,7 +127,7 @@
         "corner": "bottom-right",
         "description": "Нижний правый угол шестиугольника"
       },
-      "neighbors": ["society", "mysticism"],
+      "neighbors": ["community", "mysticism"],
       "opposite": "war",
       "axis": {
         "id": "power",
@@ -125,6 +145,11 @@
         "name": "Интуиция",
         "nameEn": "Intuition",
         "abbreviation": "INT"
+      },
+      "check": {
+        "name": "Хаос",
+        "nameEn": "Chaos",
+        "description": "Проверки магии, интуиции и духовной связи"
       },
       "color": "#9333ea",
       "colorName": "purple",
@@ -155,6 +180,11 @@
         "nameEn": "Perception",
         "abbreviation": "PER"
       },
+      "check": {
+        "name": "Поиск",
+        "nameEn": "Search",
+        "description": "Проверки наблюдательности, выживания и связи с природой"
+      },
       "color": "#22c55e",
       "colorName": "green",
       "icon": "game-icons:curled-leaf",
@@ -166,7 +196,7 @@
         "description": "Левый угол шестиугольника"
       },
       "neighbors": ["mysticism", "war"],
-      "opposite": "society",
+      "opposite": "community",
       "axis": {
         "id": "path",
         "name": "Путь",
@@ -215,14 +245,14 @@
       "name": "Путь",
       "nameEn": "Path",
       "description": "Ось пути: от дикой природы до цивилизованного общества",
-      "aspects": ["nature", "society"],
+      "aspects": ["nature", "community"],
       "poles": {
         "wilderness": {
           "aspect": "nature",
           "description": "Природа, инстинкты, гармония с окружением"
         },
         "civilization": {
-          "aspect": "society",
+          "aspect": "community",
           "description": "Общество, культура, социальные структуры"
         }
       }
@@ -235,6 +265,6 @@
     "version": "1.0",
     "aspectCount": 6,
     "axisCount": 3,
-    "circularOrder": ["war", "knowledge", "society", "shadow", "mysticism", "nature"]
+    "circularOrder": ["war", "knowledge", "community", "shadow", "mysticism", "nature"]
   }
 }
