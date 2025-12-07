@@ -1,0 +1,270 @@
+{
+  "aspects": [
+    {
+      "id": "war",
+      "name": "Война",
+      "nameEn": "War",
+      "description": "Физическая сила, боевые навыки, агрессия и доминирование",
+      "characteristic": {
+        "name": "Мощь",
+        "nameEn": "Might",
+        "abbreviation": "MIG"
+      },
+      "check": {
+        "name": "Конфликт",
+        "nameEn": "Conflict",
+        "description": "Проверки прямого противостояния, боя и физической силы"
+      },
+      "color": "#dc2626",
+      "colorName": "red",
+      "icon": "game-icons:crossed-swords",
+      "characteristicIcon": "game-icons:embrassed-energy",
+      "checkIcon": "game-icons:arrow-scope",
+      "position": {
+        "angle": 330,
+        "corner": "top-left",
+        "description": "Верхний левый угол шестиугольника"
+      },
+      "neighbors": ["nature", "knowledge"],
+      "opposite": "shadow",
+      "axis": {
+        "id": "power",
+        "name": "Сила",
+        "nameEn": "Power",
+        "pole": "active"
+      }
+    },
+    {
+      "id": "knowledge",
+      "name": "Знание",
+      "nameEn": "Knowledge",
+      "description": "Интеллект, логика, наука и аналитическое мышление",
+      "characteristic": {
+        "name": "Разум",
+        "nameEn": "Reason",
+        "abbreviation": "REA"
+      },
+      "check": {
+        "name": "Порядок",
+        "nameEn": "Order",
+        "description": "Проверки знаний, логики и систематического подхода"
+      },
+      "color": "#3b82f7",
+      "colorName": "blue",
+      "icon": "game-icons:open-book",
+      "characteristicIcon": "game-icons:inspiration",
+      "checkIcon": "game-icons:materials-science",
+      "position": {
+        "angle": 30,
+        "corner": "top-right",
+        "description": "Верхний правый угол шестиугольника"
+      },
+      "neighbors": ["war", "community"],
+      "opposite": "mysticism",
+      "axis": {
+        "id": "progress",
+        "name": "Развитие",
+        "nameEn": "Progress",
+        "pole": "rational"
+      }
+    },
+    {
+      "id": "community",
+      "name": "Общество",
+      "nameEn": "Community",
+      "description": "Социальные связи, лидерство, убеждение и дипломатия",
+      "characteristic": {
+        "name": "Харизма",
+        "nameEn": "Charisma",
+        "abbreviation": "CHA"
+      },
+      "check": {
+        "name": "Влияние",
+        "nameEn": "Influence",
+        "description": "Проверки социального взаимодействия и убеждения"
+      },
+      "color": "#f59e0b",
+      "colorName": "amber",
+      "icon": "game-icons:human-pyramid",
+      "characteristicIcon": "game-icons:cheerful",
+      "checkIcon": "game-icons:caesar",
+      "position": {
+        "angle": 90,
+        "corner": "right",
+        "description": "Правый угол шестиугольника"
+      },
+      "neighbors": ["knowledge", "shadow"],
+      "opposite": "nature",
+      "axis": {
+        "id": "path",
+        "name": "Путь",
+        "nameEn": "Path",
+        "pole": "civilization"
+      }
+    },
+    {
+      "id": "shadow",
+      "name": "Тень",
+      "nameEn": "Shadow",
+      "description": "Скрытность, обман, манипуляция и тайные действия",
+      "characteristic": {
+        "name": "Хитрость",
+        "nameEn": "Cunning",
+        "abbreviation": "CUN"
+      },
+      "check": {
+        "name": "Коварство",
+        "nameEn": "Treachery",
+        "description": "Проверки скрытности, обмана и манипуляций"
+      },
+      "color": "#374151",
+      "colorName": "gray",
+      "icon": "game-icons:cowled",
+      "characteristicIcon": "game-icons:domino-mask",
+      "checkIcon": "game-icons:hooded-figure",
+      "position": {
+        "angle": 150,
+        "corner": "bottom-right",
+        "description": "Нижний правый угол шестиугольника"
+      },
+      "neighbors": ["community", "mysticism"],
+      "opposite": "war",
+      "axis": {
+        "id": "power",
+        "name": "Сила",
+        "nameEn": "Power",
+        "pole": "subtle"
+      }
+    },
+    {
+      "id": "mysticism",
+      "name": "Мистика",
+      "nameEn": "Mysticism",
+      "description": "Магия, духовность, интуиция и связь с потусторонним",
+      "characteristic": {
+        "name": "Интуиция",
+        "nameEn": "Intuition",
+        "abbreviation": "INT"
+      },
+      "check": {
+        "name": "Хаос",
+        "nameEn": "Chaos",
+        "description": "Проверки магии, интуиции и духовной связи"
+      },
+      "color": "#9333ea",
+      "colorName": "purple",
+      "icon": "game-icons:pentacle",
+      "characteristicIcon": "game-icons:coiling-curl",
+      "checkIcon": "game-icons:small-fire",
+      "position": {
+        "angle": 210,
+        "corner": "bottom-left",
+        "description": "Нижний левый угол шестиугольника"
+      },
+      "neighbors": ["shadow", "nature"],
+      "opposite": "knowledge",
+      "axis": {
+        "id": "progress",
+        "name": "Развитие",
+        "nameEn": "Progress",
+        "pole": "intuitive"
+      }
+    },
+    {
+      "id": "nature",
+      "name": "Природа",
+      "nameEn": "Nature",
+      "description": "Связь с природой, выживание, животные инстинкты и гармония",
+      "characteristic": {
+        "name": "Восприятие",
+        "nameEn": "Perception",
+        "abbreviation": "PER"
+      },
+      "check": {
+        "name": "Поиск",
+        "nameEn": "Search",
+        "description": "Проверки наблюдательности, выживания и связи с природой"
+      },
+      "color": "#22c55e",
+      "colorName": "green",
+      "icon": "game-icons:curled-leaf",
+      "characteristicIcon": "game-icons:semi-closed-eye",
+      "checkIcon": "game-icons:spyglass",
+      "position": {
+        "angle": 270,
+        "corner": "left",
+        "description": "Левый угол шестиугольника"
+      },
+      "neighbors": ["mysticism", "war"],
+      "opposite": "community",
+      "axis": {
+        "id": "path",
+        "name": "Путь",
+        "nameEn": "Path",
+        "pole": "wilderness"
+      }
+    }
+  ],
+  "axes": [
+    {
+      "id": "power",
+      "name": "Сила",
+      "nameEn": "Power",
+      "description": "Ось силы: от прямой физической мощи до скрытого влияния",
+      "aspects": ["war", "shadow"],
+      "poles": {
+        "active": {
+          "aspect": "war",
+          "description": "Прямое действие, открытая сила, доминирование"
+        },
+        "subtle": {
+          "aspect": "shadow",
+          "description": "Скрытое влияние, манипуляция, тайные действия"
+        }
+      }
+    },
+    {
+      "id": "progress",
+      "name": "Развитие",
+      "nameEn": "Progress",
+      "description": "Ось развития: от рационального познания до интуитивного понимания",
+      "aspects": ["knowledge", "mysticism"],
+      "poles": {
+        "rational": {
+          "aspect": "knowledge",
+          "description": "Логика, наука, аналитическое мышление"
+        },
+        "intuitive": {
+          "aspect": "mysticism",
+          "description": "Интуиция, магия, духовное познание"
+        }
+      }
+    },
+    {
+      "id": "path",
+      "name": "Путь",
+      "nameEn": "Path",
+      "description": "Ось пути: от дикой природы до цивилизованного общества",
+      "aspects": ["nature", "community"],
+      "poles": {
+        "wilderness": {
+          "aspect": "nature",
+          "description": "Природа, инстинкты, гармония с окружением"
+        },
+        "civilization": {
+          "aspect": "community",
+          "description": "Общество, культура, социальные структуры"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "systemName": "triP",
+    "systemFullName": "Triple P System",
+    "systemDescription": "Система трёх осей: Power (Сила), Progress (Развитие), Path (Путь)",
+    "version": "1.0",
+    "aspectCount": 6,
+    "axisCount": 3,
+    "circularOrder": ["war", "knowledge", "community", "shadow", "mysticism", "nature"]
+  }
+}

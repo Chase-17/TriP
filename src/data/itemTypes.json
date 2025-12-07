@@ -1,0 +1,82 @@
+{
+  "weaponTypes": {
+    "spears": {
+      "name": "Копья",
+      "nameEn": "Spears",
+      "icon": "game-icons:broadhead-arrow"
+    },
+    "swords": {
+      "name": "Мечи",
+      "nameEn": "Swords",
+      "icon": "game-icons:croc-sword"
+    },
+    "daggers": {
+      "name": "Кинжалы",
+      "nameEn": "Daggers",
+      "icon": "game-icons:plain-dagger"
+    },
+    "bows": {
+      "name": "Луки",
+      "nameEn": "Bows",
+      "icon": "game-icons:bow-arrow"
+    },
+    "crossbows": {
+      "name": "Арбалеты",
+      "nameEn": "Crossbows",
+      "icon": "game-icons:crossbow"
+    },
+    "slings": {
+      "name": "Пращи",
+      "nameEn": "Slings",
+      "icon": "game-icons:sling"
+    },
+    "axes": {
+      "name": "Топоры",
+      "nameEn": "Axes",
+      "icon": "game-icons:battered-axe"
+    },
+    "maces": {
+      "name": "Булавы",
+      "nameEn": "Maces",
+      "icon": "game-icons:flanged-mace"
+    },
+    "flails": {
+      "name": "Цепы",
+      "nameEn": "Flails",
+      "icon": "game-icons:flail"
+    },
+    "shields": {
+      "name": "Щиты",
+      "nameEn": "Shields",
+      "icon": "game-icons:round-shield"
+    }
+  },
+  "armorTypes": {
+    "light": {
+      "name": "Лёгкая",
+      "nameEn": "Light"
+    },
+    "middle": {
+      "name": "Средняя",
+      "nameEn": "Medium"
+    },
+    "heavy": {
+      "name": "Тяжёлая",
+      "nameEn": "Heavy"
+    }
+  },
+  "damageTypes": {
+    "piercing": {
+      "name": "Колющий",
+      "nameEn": "Piercing"
+    },
+    "slashing": {
+      "name": "Режущий",
+      "nameEn": "Slashing"
+    },
+    "bludgeoning": {
+      "name": "Дробящий",
+      "nameEn": "Bludgeoning"
+    }
+  }
+}

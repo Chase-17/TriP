@@ -1,41 +1,32 @@
-# triP-app
+# TriP Rooms
 
-This template should help get you started developing with Vue 3 in Vite.
+> Лёгкие PeerJS-комнаты для мастеров и игроков настольных RPG. Мастер создаёт комнату, игроки подключаются по коду и попадают в общий чат.
 
-## Recommended IDE Setup
+## Стек
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- [Vue 3](https://vuejs.org/) + [Vite](https://vitejs.dev/)
+- [Pinia](https://pinia.vuejs.org/) для состояния
+- [PeerJS](https://peerjs.com/) для p2p-соединений
+- [UnoCSS](https://uno.antfu.me/) для мгновенных стилей
 
-## Customize configuration
+## Скрипты
 
-See [Vite Configuration Reference](https://vitejs.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
+```powershell
+npm install        # установка зависимостей
+npm run dev        # старт dev-сервера
+npm run build      # production-сборка
+npm run preview    # предпросмотр сборки
+npm run test:unit  # unit-тесты (Vitest)
+npm run lint       # ESLint + форматтер
 ```
 
-### Compile and Hot-Reload for Development
+## Быстрый старт
 
-```sh
-npm run dev
-```
+1. Запустите `npm run dev` и откройте приложение в двух вкладках браузера.
+2. В первой вкладке выберите роль «Мастер» и нажмите «Создать комнату».
+3. Скопируйте код комнаты и вставьте его во второй вкладке, выбрав роль «Игрок».
+4. Оба участника окажутся в общем чате и смогут обмениваться сообщениями в режиме peer-to-peer.
 
-### Compile and Minify for Production
+## Настройка PeerJS-сервера
 
-```sh
-npm run build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
-
-```sh
-npm run test:unit
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
-```
+По умолчанию используется облачный шлюз `0.peerjs.com`, достаточный для прототипов. Для production-развертывания рекомендуется поднять собственный PeerServer и прописать его конфигурацию в `src/stores/session.js` (`peerConfig`).

@@ -1,0 +1,173 @@
+﻿{
+  "3": {
+    "name": "Ниже простой",
+    "short": "НП",
+    "level": 1,
+    "modifier": "below",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "dashed"
+  },
+  "6": {
+    "name": "Простая",
+    "short": "П",
+    "level": 1,
+    "modifier": "base",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "single"
+  },
+  "9": {
+    "name": "Выше простой",
+    "short": "ВП",
+    "level": 1,
+    "modifier": "above",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "double"
+  },
+  "12": {
+    "name": "Ниже лёгкой",
+    "short": "НЛ",
+    "level": 2,
+    "modifier": "below",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "dashed"
+  },
+  "15": {
+    "name": "Лёгкая",
+    "short": "Л",
+    "level": 2,
+    "modifier": "base",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "single"
+  },
+  "18": {
+    "name": "Выше лёгкой",
+    "short": "ВЛ",
+    "level": 2,
+    "modifier": "above",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "double"
+  },
+  "21": {
+    "name": "Ниже средней",
+    "short": "НС",
+    "level": 3,
+    "modifier": "below",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "dashed"
+  },
+  "24": {
+    "name": "Средняя",
+    "short": "С",
+    "level": 3,
+    "modifier": "base",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "single"
+  },
+  "27": {
+    "name": "Выше средней",
+    "short": "ВС",
+    "level": 3,
+    "modifier": "above",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "double"
+  },
+  "30": {
+    "name": "Ниже тяжёлой",
+    "short": "НТ",
+    "level": 4,
+    "modifier": "below",
+    "color": "#FF8800",
+    "lightText": false,
+    "linetype": "dashed"
+  },
+  "33": {
+    "name": "Тяжёлая",
+    "short": "Т",
+    "level": 4,
+    "modifier": "base",
+    "color": "#FF8800",
+    "lightText": false,
+    "linetype": "single"
+  },
+  "36": {
+    "name": "Выше тяжёлой",
+    "short": "ВТ",
+    "level": 4,
+    "modifier": "above",
+    "color": "#FF8800",
+    "lightText": false,
+    "linetype": "double"
+  },
+  "39": {
+    "name": "Ниже жестокой",
+    "short": "НЖ",
+    "level": 5,
+    "modifier": "below",
+    "color": "#CC0000",
+    "lightText": true,
+    "linetype": "dashed"
+  },
+  "42": {
+    "name": "Жестокая",
+    "short": "Ж",
+    "level": 5,
+    "modifier": "base",
+    "color": "#CC0000",
+    "lightText": true,
+    "linetype": "single"
+  },
+  "45": {
+    "name": "Выше жестокой",
+    "short": "ВЖ",
+    "level": 5,
+    "modifier": "above",
+    "color": "#CC0000",
+    "lightText": true,
+    "linetype": "double"
+  },
+  "48": {
+    "name": "Ниже кошмарной",
+    "short": "НК",
+    "level": 6,
+    "modifier": "below",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "dashed"
+  },
+  "51": {
+    "name": "Кошмарная",
+    "short": "К",
+    "level": 6,
+    "modifier": "base",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "single"
+  },
+  "54": {
+    "name": "Выше кошмарной",
+    "short": "ВК",
+    "level": 6,
+    "modifier": "above",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "double"
+  },
+  "60": {
+    "name": "Невозможная",
+    "short": "Н",
+    "level": 7,
+    "modifier": "base",
+    "color": "#000000",
+    "lightText": true,
+    "linetype": "single"
+  }
+}
