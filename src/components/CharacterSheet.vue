@@ -6,15 +6,19 @@ import CharacterWizard from './CharacterWizard.vue'
 import CharacterSheetDetailed from './CharacterSheetDetailed.vue'
 import CharacterCards from './CharacterCards.vue'
 import { useUserStore } from '@/stores/user'
+import { useCharactersStore } from '@/stores/characters'
 
 const userStore = useUserStore()
-const { activeCharacter, characters, showCharacterWizard, currentView } = storeToRefs(userStore)
+const charactersStore = useCharactersStore()
+
+const { showCharacterWizard, currentView } = storeToRefs(userStore)
+const { myCharacters, activeCharacter, activeCharacterId } = storeToRefs(charactersStore)
 
 // Режим отображения: 'cards' или 'detailed'
 const viewMode = ref('cards')
 
 const hasCharacter = computed(() => Boolean(activeCharacter.value))
-const hasCharacters = computed(() => characters.value.length > 0)
+const hasCharacters = computed(() => myCharacters.value.length > 0)
 
 const openWizard = () => {
   userStore.openCharacterWizard()
@@ -35,7 +39,7 @@ const handleCharacterCreated = () => {
 }
 
 const handleSelectCharacter = (characterId) => {
-  userStore.setActiveCharacter(characterId)
+  charactersStore.setActiveCharacter(characterId)
   viewMode.value = 'detailed'
 }
 
@@ -55,8 +59,8 @@ const handleCloseDetailed = () => {
     <!-- Карточки персонажей -->
     <CharacterCards
       v-if="viewMode === 'cards'"
-      :characters="characters"
-      :active-character-id="activeCharacter?.id"
+      :characters="myCharacters"
+      :active-character-id="activeCharacterId"
       @select-character="handleSelectCharacter"
       @create-character="openWizard"
     />

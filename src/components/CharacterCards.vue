@@ -1,12 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
-import CharacterCardCompact from './CharacterCardCompact.vue'
 import aspectsData from '@/data/aspects.json'
 import classesData from '@/data/classes.json'
-import { useUserStore } from '@/stores/user'
-
-const userStore = useUserStore()
+import HealthDisplay from './HealthDisplay.vue'
+import CharacterPortrait from './CharacterPortrait.vue'
+import { getDefenceData } from '@/utils/defence'
 
 const props = defineProps({
   characters: {
@@ -16,17 +15,10 @@ const props = defineProps({
   activeCharacterId: {
     type: String,
     default: null
-  },
-  compactMode: {
-    type: Boolean,
-    default: false
   }
 })
 
 const emit = defineEmits(['select-character', 'create-character'])
-
-// Локальное состояние для переключения режима
-const compactMode = ref(false)
 
 // Маппинг классов
 const classesMap = computed(() => {
@@ -73,27 +65,7 @@ const getDominantAspect = (character) => {
   return dominantId ? aspectsMap.value[dominantId] : null
 }
 
-// Получить HP
-const getHP = (character) => {
-  const current = character.hp?.current ?? 0
-  const max = character.hp?.max ?? 0
-  return { current, max }
-}
 
-// Процент HP
-const getHPPercent = (character) => {
-  const hp = getHP(character)
-  if (hp.max === 0) return 0
-  return Math.round((hp.current / hp.max) * 100)
-}
-
-// Цвет HP бара
-const getHPColor = (character) => {
-  const percent = getHPPercent(character)
-  if (percent > 60) return 'bg-emerald-500'
-  if (percent > 30) return 'bg-yellow-500'
-  return 'bg-red-500'
-}
 
 // Получить активное оружие
 const getActiveWeapon = (character) => {
@@ -121,59 +93,6 @@ const createCharacter = () => {
   emit('create-character')
 }
 
-// Обработчики для компактных карточек
-const handleUpdateHP = (characterId, newHP) => {
-  const character = props.characters.find(c => c.id === characterId)
-  if (character) {
-    userStore.updateCharacter(characterId, {
-      ...character,
-      hp: { ...character.hp, current: newHP }
-    })
-  }
-}
-
-const handleUpdateWounds = (characterId, newWounds) => {
-  const character = props.characters.find(c => c.id === characterId)
-  if (character) {
-    userStore.updateCharacter(characterId, {
-      ...character,
-      wounds: newWounds
-    })
-  }
-}
-
-const handleToggleStatus = (characterId, statusId) => {
-  const character = props.characters.find(c => c.id === characterId)
-  if (character) {
-    const statusEffects = character.statusEffects || []
-    const index = statusEffects.findIndex(s => s.id === statusId)
-    
-    if (index !== -1) {
-      // Удаляем статус
-      statusEffects.splice(index, 1)
-    } else {
-      // Добавляем статус (в реальности здесь бы открывалась модалка выбора)
-      statusEffects.push({ id: statusId, name: 'Статус', icon: '●' })
-    }
-    
-    userStore.updateCharacter(characterId, {
-      ...character,
-      statusEffects: [...statusEffects]
-    })
-  }
-}
-
-// Переключить тип здоровья (для тестирования)
-const toggleHealthType = (characterId) => {
-  const character = props.characters.find(c => c.id === characterId)
-  if (character) {
-    const newType = character.healthType === 'hp' ? 'wounds' : 'hp'
-    userStore.updateCharacter(characterId, {
-      ...character,
-      healthType: newType
-    })
-  }
-}
 </script>
 
 <template>
@@ -186,13 +105,6 @@ const toggleHealthType = (characterId) => {
       </div>
       <div class="flex items-center gap-3">
         <button
-          @click="compactMode = !compactMode"
-          class="px-3 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-slate-300 hover:bg-slate-700 transition flex items-center gap-2"
-          :title="compactMode ? 'Переключить на карточки' : 'Переключить на компактный режим'"
-        >
-          <Icon :icon="compactMode ? 'mdi:view-grid' : 'mdi:view-list'" class="w-5 h-5" />
-        </button>
-        <button
           @click="createCharacter"
           class="px-4 py-2 rounded-lg bg-sky-500/20 border border-sky-400/60 text-sky-100 hover:bg-sky-500/30 transition flex items-center gap-2 font-semibold"
         >
@@ -202,23 +114,8 @@ const toggleHealthType = (characterId) => {
       </div>
     </div>
 
-    <!-- Компактный режим (список) -->
-    <div v-if="compactMode" class="space-y-2">
-      <CharacterCardCompact
-        v-for="character in characters"
-        :key="character.id"
-        :character="character"
-        :is-active="character.id === activeCharacterId"
-        @click="selectCharacter(character.id)"
-        @update-hp="handleUpdateHP"
-        @update-wounds="handleUpdateWounds"
-        @toggle-status="handleToggleStatus"
-        @toggle-health-type="toggleHealthType"
-      />
-    </div>
-
-    <!-- Сетка карточек (обычный режим) -->
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <!-- Сетка карточек -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <div
         v-for="character in characters"
         :key="character.id"
@@ -234,11 +131,19 @@ const toggleHealthType = (characterId) => {
 
         <!-- Шапка с портретом и основной инфой -->
         <div class="flex items-start gap-4 mb-4">
-          <!-- Портрет -->
-          <div class="character-portrait">
-            <div class="w-full h-full rounded-lg bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-3xl">
-              {{ character.name?.charAt(0)?.toUpperCase() || '?' }}
-            </div>
+          <!-- Портрет с ранениями -->
+          <div class="relative">
+            <CharacterPortrait
+              :portrait="character.portrait"
+              :name="character.name"
+              :combat="character.combat"
+              :stats="character.stats"
+              :meleeDefence="getDefenceData(character, 'melee')"
+              :rangedDefence="getDefenceData(character, 'ranged')"
+              :showDefence="true"
+              defenceLayout="left"
+              size="lg"
+            />
             <!-- Уровень -->
             <div class="level-badge">
               {{ getCharacterLevel(character) }}
@@ -273,21 +178,13 @@ const toggleHealthType = (characterId) => {
           </div>
         </div>
 
-        <!-- HP бар -->
+        <!-- Здоровье -->
         <div class="mb-4">
-          <div class="flex justify-between items-center mb-1 text-xs">
-            <span class="text-slate-400">Здоровье</span>
-            <span class="text-slate-300 font-semibold">
-              {{ getHP(character).current }} / {{ getHP(character).max }}
-            </span>
-          </div>
-          <div class="hp-bar-bg">
-            <div 
-              class="hp-bar-fill transition-all duration-300"
-              :class="getHPColor(character)"
-              :style="{ width: `${getHPPercent(character)}%` }"
-            ></div>
-          </div>
+          <HealthDisplay
+            :combat="character.combat || { healthType: 'simple', hp: 0, maxHp: 8, wounds: { scratch: 0, light: 0, heavy: 0, deadly: 0 } }"
+            :stats="character.stats || {}"
+            :readonly="true"
+          />
         </div>
 
         <!-- Статистика -->
@@ -383,13 +280,6 @@ const toggleHealthType = (characterId) => {
   color: #10b981;
 }
 
-.character-portrait {
-  position: relative;
-  width: 80px;
-  height: 80px;
-  flex-shrink: 0;
-}
-
 .level-badge {
   position: absolute;
   bottom: -4px;
@@ -405,18 +295,6 @@ const toggleHealthType = (characterId) => {
   font-size: 0.75rem;
   font-weight: 700;
   color: white;
-}
-
-.hp-bar-bg {
-  height: 8px;
-  background: rgba(15, 23, 42, 0.8);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.hp-bar-fill {
-  height: 100%;
-  border-radius: 4px;
 }
 
 .stats-mini-grid {

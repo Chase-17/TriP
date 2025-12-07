@@ -1,25 +1,44 @@
 /**
  * Утилиты для работы с системой ранений и HP
+ * 
+ * Система здоровья имеет 2 режима:
+ * 1. Простое HP (для слабых монстров и начинающих персонажей)
+ *    - X из Y квадратиков, сгруппированных по 3
+ *    - Каждые 3 потерянных HP влияют на бонусы
+ * 
+ * 2. Продвинутые ранения (для опытных персонажей)
+ *    - 4 категории: царапины, лёгкие, тяжёлые, смертельные
+ *    - Базовые слоты: 3/2/1/1
+ *    - Бонусные слоты (отображаются особым цветом):
+ *      - Царапины: +1 за каждые 3 Разума (knowledge)
+ *      - Лёгкие: +1 за каждые 6 Мощи (war)
+ *      - Тяжёлые: +1 за каждые 8 Восприятия (nature)
+ *      - Смертельные: только через особые умения/артефакты
  */
 
 /**
  * Рассчитать максимальное количество HP для простой системы здоровья
- * @param {Object} stats - характеристики персонажа
+ * Базовое HP = 8
+ * +1 за каждый бонусный слот царапин
+ * +3 за каждый бонусный слот лёгких
+ * +6 за каждый бонусный слот тяжёлых
+ * 
+ * @param {Object} stats - характеристики персонажа (атрибуты по ключам аспектов)
  * @returns {number} максимальное HP
  */
 export function calculateMaxHP(stats = {}) {
   let baseHP = 8
   
-  // Каждый доп слот царапин добавляет +1 HP
+  // Каждый доп слот царапин (Разум/3) добавляет +1 HP
   const scratchBonus = Math.floor((stats.knowledge || 0) / 3)
   baseHP += scratchBonus * 1
   
-  // Каждый доп слот лёгких добавляет +3 HP
+  // Каждый доп слот лёгких (Мощь/6) добавляет +3 HP
   const lightBonus = Math.floor((stats.war || 0) / 6)
   baseHP += lightBonus * 3
   
-  // Каждый доп слот тяжёлых добавляет +6 HP
-  const heavyBonus = Math.floor((stats.mysticism || 0) / 9)
+  // Каждый доп слот тяжёлых (Восприятие/8) добавляет +6 HP
+  const heavyBonus = Math.floor((stats.nature || 0) / 8)
   baseHP += heavyBonus * 6
   
   return baseHP
@@ -50,26 +69,39 @@ export function getDamageType(damage) {
 
 /**
  * Рассчитать максимальное количество слотов для каждого типа ранений
+ * Базовые слоты: царапины=3, лёгкие=2, тяжёлые=1, смертельные=1
+ * 
+ * Бонусные слоты:
+ * - Царапины: +1 за каждые 3 Разума (knowledge)
+ * - Лёгкие: +1 за каждые 6 Мощи (war)
+ * - Тяжёлые: +1 за каждые 8 Восприятия (nature)
+ * - Смертельные: только через особые умения (параметр bonusDeadlySlots)
+ * 
  * @param {Object} stats - характеристики персонажа
- * @returns {Object} объект с базовыми и бонусными слотами
+ * @param {number} bonusDeadlySlots - бонусные смертельные слоты от умений/артефактов
+ * @returns {Object} объект с базовыми и бонусными слотами для каждого типа
  */
-export function calculateWoundSlots(stats = {}) {
+export function calculateWoundSlots(stats = {}, bonusDeadlySlots = 0) {
   return {
     scratch: {
       base: 3,
-      bonus: Math.floor((stats.knowledge || 0) / 3)
+      bonus: Math.floor((stats.knowledge || 0) / 3),
+      get total() { return this.base + this.bonus }
     },
     light: {
       base: 2,
-      bonus: Math.floor((stats.war || 0) / 6)
+      bonus: Math.floor((stats.war || 0) / 6),
+      get total() { return this.base + this.bonus }
     },
     heavy: {
       base: 1,
-      bonus: Math.floor((stats.mysticism || 0) / 9)
+      bonus: Math.floor((stats.nature || 0) / 8),
+      get total() { return this.base + this.bonus }
     },
     deadly: {
       base: 1,
-      bonus: 0 // бонусные смертельные слоты получаются только через умения
+      bonus: bonusDeadlySlots,
+      get total() { return this.base + this.bonus }
     }
   }
 }
@@ -136,21 +168,20 @@ export function removeWound(currentWounds, woundType) {
 export function calculateWoundPenalties(currentWounds, slots) {
   let penalty = 0
   
-  // Лёгкие ранения: -3 если заполнены базовые слоты (штраф только от базовых)
+  // Лёгкие ранения: -3 за каждый раненый БАЗОВЫЙ слот
+  // Бонусные слоты ранятся первыми, поэтому штраф начинается когда current > bonus
   const lightCurrent = currentWounds.light?.current || 0
   const lightBonus = slots.light.bonus
-  if (lightCurrent > lightBonus) {
-    penalty -= 3
-  }
+  const lightBaseDamaged = Math.max(0, lightCurrent - lightBonus)
+  penalty -= 3 * lightBaseDamaged
   
-  // Тяжёлые ранения: -6 если заполнены базовые слоты
+  // Тяжёлые ранения: -6 за каждый раненый БАЗОВЫЙ слот
   const heavyCurrent = currentWounds.heavy?.current || 0
   const heavyBonus = slots.heavy.bonus
-  if (heavyCurrent > heavyBonus) {
-    penalty -= 6
-  }
+  const heavyBaseDamaged = Math.max(0, heavyCurrent - heavyBonus)
+  penalty -= 6 * heavyBaseDamaged
   
-  // Смертельные: -9 за каждое (обычно означает смерть или критическое состояние)
+  // Смертельные: -9 за каждое
   const deadlyCurrent = currentWounds.deadly?.current || 0
   if (deadlyCurrent > 0) {
     penalty -= 9 * deadlyCurrent

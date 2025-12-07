@@ -218,20 +218,26 @@ const aspectColors = computed(() => {
 })
 
 // Calculate check bonuses - make it reactive to stats changes
+// Формула: floor(aspect + neighbor1/2 + neighbor2/2 + modifiers)
+// Alternative: floor(opposite/2)
+// Результат: max(primary, alternative)
 const checkBonuses = computed(() => {
   const bonuses = {}
+  
+  // На этапе создания персонажа штрафов от ран нет, modifiers = 0
+  const modifiers = 0
   
   aspects.forEach(aspect => {
     const statValue = propsStats.value[aspect.id] || 0
     const neighbors = aspect.neighbors || []
     const opposite = aspect.opposite
     
-    // Primary bonus: full stat + half of each neighbor (rounded down)
+    // Primary bonus: floor(stat + neighbor1/2 + neighbor2/2 + modifiers)
     const neighbor1Value = propsStats.value[neighbors[0]] || 0
     const neighbor2Value = propsStats.value[neighbors[1]] || 0
-    const primaryBonus = statValue + Math.floor(neighbor1Value / 2) + Math.floor(neighbor2Value / 2)
+    const primaryBonus = Math.floor(statValue + neighbor1Value / 2 + neighbor2Value / 2 + modifiers)
     
-    // Alternative bonus: half of opposite (rounded down)
+    // Alternative bonus: floor(opposite/2)
     const oppositeValue = propsStats.value[opposite] || 0
     const alternativeBonus = Math.floor(oppositeValue / 2)
     

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import Peer from 'peerjs'
 import { useUserStore } from './user'
+import { useBattleMapStore } from './battleMap'
+import { useCharactersStore } from './characters'
 
 const peerConfig = {
   host: '0.peerjs.com',
@@ -44,7 +46,11 @@ export const useSessionStore = defineStore('session', {
     messages: [],
     reconnectAttempts: 0,
     reconnectTimer: null,
-    masterProfile: null // Профиль мастера для игроков
+    masterProfile: null, // Профиль мастера для игроков
+    
+    // Сплеш-сообщения (очередь для отображения)
+    splashQueue: [],
+    currentSplash: null
   }),
   persist: {
     key: 'trip-session-v1',
@@ -333,15 +339,25 @@ export const useSessionStore = defineStore('session', {
             conn.send(msg)
           }
         })
+        
+        // Отправляем игроку текущую карту (с небольшой задержкой для стабильности)
+        setTimeout(() => {
+          this.sendMapToConnection(conn)
+        }, 100)
       })
       
       conn.on('data', (payload) => {
-        // Обработка обновления профиля
+        // Обработка по типу сообщения
         if (payload.type === 'profile-update') {
           this.handleProfileUpdate(payload)
-          // Транслируем обновление остальным участникам
+          this.broadcastPayload(payload, conn.peer)
+        } else if (payload.type === 'character-sync') {
+          this.handleCharacterSync(payload)
+        } else if (payload.type === 'chat') {
+          this.addMessage(payload)
           this.broadcastPayload(payload, conn.peer)
         } else {
+          // Остальные типы просто пересылаем
           this.addMessage(payload)
           this.broadcastPayload(payload, conn.peer)
         }
@@ -442,21 +458,33 @@ export const useSessionStore = defineStore('session', {
         this.reconnectAttempts = 0
         this.clearReconnectTimer()
         this.addMessage(systemMessage('Вы подключены к мастеру.'))
+        
+        // Отправляем своих персонажей мастеру
+        setTimeout(() => {
+          this.sendCharactersToMaster()
+        }, 200)
       })
       
       conn.on('data', (payload) => {
-        // Обработка обновления профиля
+        // Обработка по типу сообщения
         if (payload.type === 'profile-update') {
           this.handleProfileUpdate(payload)
-        } else {
-          // При первом сообщении от мастера сохраняем его профиль
-          if (!this.masterProfile && payload.userId && payload.type === 'chat') {
+        } else if (payload.type === 'map-sync') {
+          this.handleMapSync(payload)
+        } else if (payload.type === 'character-sync') {
+          this.handleCharacterSync(payload)
+        } else if (payload.type === 'splash') {
+          this.handleSplash(payload)
+        } else if (payload.type === 'chat') {
+          if (!this.masterProfile && payload.userId) {
             this.masterProfile = {
               userId: payload.userId,
-              nickname: null, // Будет заполнено при profile-update
+              nickname: null,
               avatar: null
             }
           }
+          this.addMessage(payload)
+        } else {
           this.addMessage(payload)
         }
       })
@@ -571,6 +599,498 @@ export const useSessionStore = defineStore('session', {
       if (this.messages.length > MAX_PERSISTED_MESSAGES) {
         this.messages = this.messages.slice(-MAX_PERSISTED_MESSAGES)
       }
+    },
+    
+    // ============= СИНХРОНИЗАЦИЯ КАРТЫ =============
+    
+    /**
+     * Отправить текущую карту одному подключению
+     */
+    sendMapToConnection(conn) {
+      if (!conn?.open) {
+        console.warn('[Session] sendMapToConnection: connection not open')
+        return
+      }
+      
+      const battleMapStore = useBattleMapStore()
+      const serializedMap = battleMapStore.getSerializedMap()
+      
+      if (serializedMap) {
+        console.log('[Session] Sending map to player:', serializedMap.name)
+        conn.send({
+          id: createId(),
+          type: 'map-sync',
+          action: 'full',
+          map: serializedMap,
+          time: Date.now()
+        })
+      } else {
+        console.warn('[Session] No active map to send')
+      }
+    },
+    
+    /**
+     * Отправить текущую карту всем игрокам
+     */
+    broadcastMap() {
+      if (this.role !== 'master') return
+      
+      const battleMapStore = useBattleMapStore()
+      const serializedMap = battleMapStore.getSerializedMap()
+      
+      if (!serializedMap) return
+      
+      const payload = {
+        id: createId(),
+        type: 'map-sync',
+        action: 'full',
+        map: serializedMap,
+        time: Date.now()
+      }
+      
+      this.broadcastPayload(payload)
+    },
+    
+    /**
+     * Отправить инкрементальное обновление террейна
+     */
+    broadcastTerrainUpdate(mapId, updates) {
+      if (this.role !== 'master') return
+      
+      const payload = {
+        id: createId(),
+        type: 'map-sync',
+        action: 'terrain-update',
+        mapId,
+        updates, // [{ key: "0,0", terrain: "grass" }, ...]
+        time: Date.now()
+      }
+      
+      this.broadcastPayload(payload)
+    },
+    
+    /**
+     * Отправить обновление позиции токена всем игрокам
+     * @param {string} mapId - ID карты
+     * @param {string} characterId - ID персонажа
+     * @param {number} q - новая координата q
+     * @param {number} r - новая координата r
+     */
+    broadcastMapTokenMove(mapId, characterId, q, r) {
+      if (this.role !== 'master') return
+      
+      const payload = {
+        id: createId(),
+        type: 'map-sync',
+        action: 'token-move',
+        mapId,
+        characterId,
+        q,
+        r,
+        time: Date.now()
+      }
+      
+      this.broadcastPayload(payload)
+    },
+    
+    /**
+     * Обработка полученных данных карты (для игроков)
+     */
+    handleMapSync(payload) {
+      if (this.role !== 'player') return
+      
+      console.log('[Session] Received map sync:', payload.action)
+      
+      const battleMapStore = useBattleMapStore()
+      
+      if (payload.action === 'full' && payload.map) {
+        console.log('[Session] Applying received map:', payload.map.name)
+        battleMapStore.applyReceivedMap(payload.map)
+        this.addMessage(systemMessage('Карта синхронизирована.'))
+      } else if (payload.action === 'terrain-update' && payload.mapId && payload.updates) {
+        battleMapStore.applyTerrainUpdate(payload.mapId, payload.updates)
+      } else if (payload.action === 'token-move' && payload.mapId && payload.characterId) {
+        // Обновляем позицию токена на карте
+        console.log('[Session] Token move:', payload.characterId, 'to', payload.q, payload.r)
+        battleMapStore.moveTokenByCharacterId(payload.mapId, payload.characterId, payload.q, payload.r)
+      }
+    },
+    
+    // ============= СИНХРОНИЗАЦИЯ ПЕРСОНАЖЕЙ =============
+    
+    /**
+     * Отправить своих персонажей мастеру (для игроков)
+     */
+    sendCharactersToMaster() {
+      if (this.role !== 'player' || !this.activeConnection?.open) {
+        console.log('[Session] sendCharactersToMaster: skipped, role=', this.role, 'connection open=', this.activeConnection?.open)
+        return
+      }
+      
+      const charactersStore = useCharactersStore()
+      const userStore = useUserStore()
+      
+      // Убеждаемся что userId инициализирован
+      if (!userStore.userId) {
+        userStore.initializeProfile()
+      }
+      
+      // Используем peerId как fallback для идентификации
+      const oderId = userStore.userId || this.peerId
+      const nickname = userStore.nickname || 'Игрок'
+      
+      // Получаем всех персонажей пользователя (не NPC)
+      const characters = charactersStore.myCharacters.map(c => ({ 
+        ...c,
+        // Проставляем ownerId если он пуст
+        ownerId: c.ownerId || oderId,
+        ownerNickname: c.ownerNickname || nickname
+      }))
+      
+      console.log('[Session] sendCharactersToMaster:', {
+        oderId,
+        nickname,
+        charactersCount: characters.length,
+        characters
+      })
+      
+      this.activeConnection.send({
+        id: createId(),
+        type: 'character-sync',
+        action: 'player-characters',
+        characters,
+        ownerId: oderId,
+        ownerNickname: nickname,
+        time: Date.now()
+      })
+    },
+    
+    /**
+     * Отправить обновление персонажа мастеру
+     */
+    sendCharacterUpdate(characterId) {
+      if (this.role !== 'player' || !this.activeConnection?.open) return
+      
+      const charactersStore = useCharactersStore()
+      const character = charactersStore.serializeCharacter(characterId)
+      
+      if (character) {
+        this.activeConnection.send({
+          id: createId(),
+          type: 'character-sync',
+          action: 'update',
+          character,
+          time: Date.now()
+        })
+      }
+    },
+    
+    /**
+     * Отправить уведомление об удалении персонажа мастеру
+     */
+    sendCharacterDelete(characterId) {
+      if (this.role !== 'player' || !this.activeConnection?.open) return
+      
+      const userStore = useUserStore()
+      
+      this.activeConnection.send({
+        id: createId(),
+        type: 'character-sync',
+        action: 'delete',
+        characterId,
+        ownerId: userStore.oderId || userStore.oderId,
+        time: Date.now()
+      })
+    },
+    
+    /**
+     * Отправить обновление персонажа игроку (для мастера)
+     */
+    sendCharacterToPlayer(characterId, playerId) {
+      if (this.role !== 'master') return
+      
+      const conn = this.connections.find(c => c.userId === playerId || c.peerId === playerId)
+      if (!conn?.conn?.open) return
+      
+      const charactersStore = useCharactersStore()
+      const character = charactersStore.serializeCharacter(characterId)
+      
+      if (character) {
+        conn.conn.send({
+          id: createId(),
+          type: 'character-sync',
+          action: 'your-character-update',
+          character,
+          time: Date.now()
+        })
+      }
+    },
+    
+    /**
+     * Отправить информацию о токенах всем игрокам (позиции на карте)
+     */
+    broadcastTokens() {
+      if (this.role !== 'master') return
+      
+      const charactersStore = useCharactersStore()
+      
+      // Собираем публичную информацию о всех токенах
+      const allTokens = [
+        ...charactersStore.allPlayerCharacters.filter(c => c.combat?.position).map(c => charactersStore.serializeTokenInfo(c.id)),
+        ...charactersStore.npcs.filter(n => n.combat?.position).map(n => ({
+          id: n.id,
+          name: n.name,
+          portrait: n.portrait,
+          position: n.combat.position,
+          isNpc: true,
+          npcType: n.npcType
+        }))
+      ].filter(Boolean)
+      
+      const payload = {
+        id: createId(),
+        type: 'character-sync',
+        action: 'tokens',
+        tokens: allTokens,
+        time: Date.now()
+      }
+      
+      this.broadcastPayload(payload)
+    },
+    
+    /**
+     * Обработка синхронизации персонажей
+     */
+    handleCharacterSync(payload) {
+      console.log('[Session] handleCharacterSync:', payload.action, payload)
+      const charactersStore = useCharactersStore()
+      
+      if (this.role === 'master') {
+        // Мастер получает персонажей от игроков
+        if (payload.action === 'player-characters' && payload.characters) {
+          console.log('[Session] Received characters from player:', payload.ownerNickname, 'count:', payload.characters.length)
+          
+          // Сначала удаляем старых персонажей этого владельца, которых больше нет
+          const ownerId = payload.ownerId
+          const receivedIds = new Set(payload.characters.map(c => c.id))
+          const toRemove = charactersStore.characters
+            .filter(c => c.ownerId === ownerId && !c.isNpc && !receivedIds.has(c.id))
+            .map(c => c.id)
+          
+          toRemove.forEach(id => {
+            console.log('[Session] Removing stale character:', id)
+            charactersStore.deleteCharacter(id)
+          })
+          
+          // Добавляем/обновляем полученных персонажей
+          payload.characters.forEach(char => {
+            console.log('[Session] Applying character:', char.name, char.id)
+            charactersStore.applyReceivedCharacter({
+              ...char,
+              ownerId: payload.ownerId,
+              ownerNickname: payload.ownerNickname
+            })
+          })
+        } else if (payload.action === 'update' && payload.character) {
+          charactersStore.applyReceivedCharacter(payload.character)
+        } else if (payload.action === 'delete' && payload.characterId) {
+          console.log('[Session] Deleting character:', payload.characterId)
+          charactersStore.deleteCharacter(payload.characterId)
+        }
+      } else if (this.role === 'player') {
+        // Игрок получает обновления от мастера
+        if (payload.action === 'your-character-update' && payload.character) {
+          console.log('[Session] Received character update from master')
+          charactersStore.applyReceivedCharacter(payload.character)
+        } else if (payload.action === 'tokens' && payload.tokens) {
+          // Обновляем информацию о токенах других игроков
+          charactersStore.updateOtherTokens(payload.tokens.filter(t => 
+            t.ownerId !== useUserStore().userId
+          ))
+        }
+      }
+    },
+    
+    // ============= СПЛЕШ-СООБЩЕНИЯ И АССЕТЫ =============
+    
+    /**
+     * Отправить сплеш-сообщение игроку (или всем)
+     * @param {Object} options - { type, content, duration, targetPlayerId }
+     * type: 'damage' | 'heal' | 'effect' | 'notification' | 'image' | 'note'
+     */
+    sendSplash(options) {
+      if (this.role !== 'master') return
+      
+      const payload = {
+        id: createId(),
+        type: 'splash',
+        splashType: options.type || 'notification',
+        content: options.content,
+        duration: options.duration || 1500,
+        style: options.style || {},
+        time: Date.now()
+      }
+      
+      if (options.targetPlayerId) {
+        // Отправить конкретному игроку
+        const conn = this.connections.find(c => 
+          c.userId === options.targetPlayerId || c.peerId === options.targetPlayerId
+        )
+        if (conn?.conn?.open) {
+          conn.conn.send(payload)
+        }
+      } else {
+        // Отправить всем
+        this.broadcastPayload(payload)
+      }
+    },
+    
+    /**
+     * Отправить урон (с эффектом)
+     */
+    sendDamageEffect(targetPlayerId, amount, source = '') {
+      this.sendSplash({
+        type: 'damage',
+        content: { amount, source },
+        duration: 1000,
+        targetPlayerId,
+        style: { color: '#ef4444' }
+      })
+    },
+    
+    /**
+     * Отправить исцеление (с эффектом)
+     */
+    sendHealEffect(targetPlayerId, amount) {
+      this.sendSplash({
+        type: 'heal',
+        content: { amount },
+        duration: 1000,
+        targetPlayerId,
+        style: { color: '#22c55e' }
+      })
+    },
+    
+    /**
+     * Отправить изображение игрокам (арт, локация, NPC)
+     */
+    sendImage(options) {
+      if (this.role !== 'master') return
+      
+      const payload = {
+        id: createId(),
+        type: 'splash',
+        splashType: 'image',
+        content: {
+          url: options.url,
+          caption: options.caption || '',
+          title: options.title || ''
+        },
+        duration: options.duration || 5000,
+        dismissible: options.dismissible !== false,
+        time: Date.now()
+      }
+      
+      if (options.targetPlayerId) {
+        const conn = this.connections.find(c => 
+          c.userId === options.targetPlayerId || c.peerId === options.targetPlayerId
+        )
+        if (conn?.conn?.open) {
+          conn.conn.send(payload)
+        }
+      } else {
+        this.broadcastPayload(payload)
+      }
+    },
+    
+    /**
+     * Отправить заметку/текст игрокам
+     */
+    sendNote(options) {
+      if (this.role !== 'master') return
+      
+      const payload = {
+        id: createId(),
+        type: 'splash',
+        splashType: 'note',
+        content: {
+          title: options.title || 'Заметка',
+          text: options.text,
+          style: options.style || 'parchment' // 'parchment', 'scroll', 'letter', 'book'
+        },
+        duration: options.duration || 0, // 0 = пока не закроют
+        dismissible: true,
+        time: Date.now()
+      }
+      
+      if (options.targetPlayerId) {
+        const conn = this.connections.find(c => 
+          c.userId === options.targetPlayerId || c.peerId === options.targetPlayerId
+        )
+        if (conn?.conn?.open) {
+          conn.conn.send(payload)
+        }
+      } else {
+        this.broadcastPayload(payload)
+      }
+    },
+    
+    // ============= ОБРАБОТКА СПЛЕШ-СООБЩЕНИЙ =============
+    
+    /**
+     * Обработка входящего сплеш-сообщения
+     */
+    handleSplash(payload) {
+      console.log('[Session] Received splash:', payload.splashType)
+      
+      // Добавляем в очередь
+      this.splashQueue.push(payload)
+      
+      // Если нет активного сплеша - показываем
+      if (!this.currentSplash) {
+        this.showNextSplash()
+      }
+    },
+    
+    /**
+     * Показать следующий сплеш из очереди
+     */
+    showNextSplash() {
+      if (this.splashQueue.length === 0) {
+        this.currentSplash = null
+        return
+      }
+      
+      this.currentSplash = this.splashQueue.shift()
+      
+      // Если есть duration и он не 0 - автоматически скрыть
+      if (this.currentSplash.duration > 0) {
+        setTimeout(() => {
+          this.dismissSplash()
+        }, this.currentSplash.duration)
+      }
+    },
+    
+    /**
+     * Закрыть текущий сплеш
+     */
+    dismissSplash() {
+      this.currentSplash = null
+      
+      // Показываем следующий если есть
+      if (this.splashQueue.length > 0) {
+        setTimeout(() => {
+          this.showNextSplash()
+        }, 200)
+      }
+    },
+    
+    /**
+     * Очистить все сплеши
+     */
+    clearSplashes() {
+      this.splashQueue = []
+      this.currentSplash = null
     }
   }
 })

@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
+import router from './router'
 
 import App from './App.vue'
 
@@ -12,5 +13,11 @@ const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
 
 app.use(pinia)
+app.use(router)
+
+// Инициализируем профиль пользователя сразу при старте
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
+userStore.initializeProfile()
 
 app.mount('#app')

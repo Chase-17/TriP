@@ -6,9 +6,15 @@ import diffsData from '@/data/diffs.json'
 import itemsData from '@/data/items.json'
 import EquipmentManager from './EquipmentManager.vue'
 import InventoryPanel from './InventoryPanel.vue'
-import { useUserStore } from '@/stores/user'
+import HealthDisplay from './HealthDisplay.vue'
+import CharacterPortrait from './CharacterPortrait.vue'
+import { useCharactersStore } from '@/stores/characters'
+import { useSessionStore } from '@/stores/session'
+import { getCheckBonus as getCheckBonusFromUtil } from '@/utils/checks'
+import { getDefenceData, calculateDefence } from '@/utils/defence'
 
-const userStore = useUserStore()
+const charactersStore = useCharactersStore()
+const sessionStore = useSessionStore()
 
 const props = defineProps({
   character: {
@@ -21,7 +27,7 @@ const emit = defineEmits(['close'])
 
 // Обновление персонажа
 const updateCharacter = (updatedChar) => {
-  userStore.updateCharacter(updatedChar)
+  charactersStore.updateCharacter(updatedChar.id, updatedChar)
 }
 
 // Экипировка предмета из инвентаря
@@ -72,7 +78,12 @@ const handleEquipItem = (item) => {
 // Удаление персонажа с подтверждением
 const deleteCharacter = () => {
   if (confirm(`Вы уверены, что хотите удалить персонажа "${props.character.name}"? Это действие нельзя отменить.`)) {
-    userStore.deleteCharacter(props.character.id)
+    const charId = props.character.id
+    charactersStore.deleteCharacter(charId)
+    
+    // Уведомляем мастера об удалении
+    sessionStore.sendCharacterDelete(charId)
+    
     emit('close')
   }
 }
@@ -104,9 +115,9 @@ const activeWeaponsData = computed(() => {
   }).filter(Boolean)
 })
 
-// Получаем бонус коварства (характеристика shadow)
+// Получаем бонус коварства (Treachery) — используется для отображения
 const cunningBonus = computed(() => {
-  return props.character.stats?.shadow || 0
+  return getCheckBonusFromUtil(props.character, 'shadow')
 })
 
 // Находим ближайшую сложность для значения защиты
@@ -130,11 +141,8 @@ const findDifficulty = (value) => {
 
 // Получаем цвет для сложности
 const getDifficultyColor = (value) => {
-  if (value <= 6) return 'rgb(56 189 248)'   // sky-400
-  if (value <= 15) return 'rgb(163 230 53)'  // lime-400
-  if (value <= 24) return 'rgb(250 204 21)'  // yellow-400
-  if (value <= 33) return 'rgb(251 146 60)'  // orange-400
-  return 'rgb(248 113 113)'                  // red-400
+  const difficulty = findDifficulty(value)
+  return difficulty?.color || '#FFFFFF'
 }
 
 // Получаем бонус защиты от щитов и оружия
@@ -160,28 +168,9 @@ const getWeaponDefenceBonus = (direction, attackType) => {
 }
 
 // Вычисляем защиту для каждой комбинации направление/тип атаки
+// Использует централизованную функцию из defence.js
 const getDefence = (direction, attackType) => {
-  const armorDefence = armorData.value?.defence || 0
-  const halfCunning = Math.floor(cunningBonus.value / 2)
-  
-  // Бонус от оружия и щитов
-  const weaponBonus = getWeaponDefenceBonus(direction, attackType)
-  
-  let baseDefence = 0
-  let cunningMod = 0
-  
-  if (direction === 'front') {
-    baseDefence = 6
-    cunningMod = cunningBonus.value
-  } else if (direction === 'flank') {
-    baseDefence = 3
-    cunningMod = halfCunning
-  } else if (direction === 'back') {
-    baseDefence = 0
-    cunningMod = halfCunning
-  }
-  
-  const totalDefence = baseDefence + cunningMod + armorDefence + weaponBonus
+  const totalDefence = calculateDefence(props.character, direction, attackType)
   const difficulty = findDifficulty(totalDefence)
   
   return {
@@ -215,6 +204,12 @@ const level = computed(() => {
   return props.character.level || 0
 })
 
+// Защита от ударов (melee) для портрета — используем централизованную функцию
+const meleeDefence = computed(() => getDefenceData(props.character, 'melee'))
+
+// Защита от снарядов (ranged) для портрета — используем централизованную функцию
+const rangedDefence = computed(() => getDefenceData(props.character, 'ranged'))
+
 // Сложности проверок по возрастанию
 const difficulties = computed(() => {
   return Object.entries(diffsData.default || diffsData)
@@ -240,46 +235,29 @@ const checkTypes = computed(() => {
   })
 })
 
+// Вычисляем штраф от ранений
+// Лёгкое ранение = -1 категория = -3 к бонусу
+// Тяжёлое ранение = -2 категории = -6 к бонусу
+const getWoundsPenalty = () => {
+  const combat = props.character.combat
+  if (!combat || combat.healthType === 'simple') {
+    // В простом режиме штраф от потерянного HP
+    const lostHp = (combat?.maxHp || 8) - (combat?.hp || 0)
+    return Math.floor(lostHp / 3) * 3 // каждые 3 потерянных HP = -3
+  }
+  
+  // В режиме ранений: лёгкие -3, тяжёлые -6
+  const wounds = combat.wounds || {}
+  const lightPenalty = (wounds.light || 0) * 3
+  const heavyPenalty = (wounds.heavy || 0) * 6
+  
+  return lightPenalty + heavyPenalty
+}
+
 // Вычисляем бонус к проверке для каждого типа
+// Использует централизованную формулу из utils/checks.js
 const getCheckBonus = (aspectId) => {
-  const stats = props.character.stats || {}
-  const skills = props.character.skills || {}
-  
-  // Базовое значение характеристики
-  const statValue = stats[aspectId] || 0
-  
-  // Бонусы от навыков (если навык связан с этим аспектом)
-  let skillBonus = 0
-  
-  // Проверяем навыки класса
-  if (skills.fromClass && Array.isArray(skills.fromClass)) {
-    skills.fromClass.forEach(skill => {
-      // Навык может давать бонус +3 к своему аспекту
-      if (skill.aspect === aspectId) {
-        skillBonus += 3
-      }
-    })
-  }
-  
-  // Проверяем навыки от подрасы (аспект 1)
-  if (skills.fromAspect1 && Array.isArray(skills.fromAspect1)) {
-    skills.fromAspect1.forEach(skill => {
-      if (skill.aspect === aspectId) {
-        skillBonus += 3
-      }
-    })
-  }
-  
-  // Проверяем навыки от подрасы (аспект 2)
-  if (skills.fromAspect2 && Array.isArray(skills.fromAspect2)) {
-    skills.fromAspect2.forEach(skill => {
-      if (skill.aspect === aspectId) {
-        skillBonus += 3
-      }
-    })
-  }
-  
-  return statValue + skillBonus
+  return getCheckBonusFromUtil(props.character, aspectId)
 }
 
 // Определяем, что показывать в ячейке для конкретной проверки и сложности
@@ -306,22 +284,60 @@ const getCellContent = (aspectId, difficulty) => {
   return { type: 'fail', value: '✗' }
 }
 
-// Получаем цвет границы для столбца сложности
+// Получаем цвет границы для столбца сложности (возвращает цвет напрямую)
 const getDifficultyBorderColor = (difficulty) => {
-  const value = difficulty.value
-  if (value <= 6) return 'border-l-sky-400'
-  if (value <= 15) return 'border-l-lime-400'
-  if (value <= 24) return 'border-l-yellow-400'
-  if (value <= 33) return 'border-l-orange-400'
-  return 'border-l-red-400'
+  return difficulty.color || '#FFFFFF'
 }
 
-// Получаем тип границы (solid/dashed/double)
+// Получаем стили для вертикальной линии столбца
+// Используем repeating-linear-gradient для всех типов линий
+// Ширина всегда 4px (две 2px линии рядом) для стабильности разметки
 const getDifficultyBorderStyle = (difficulty) => {
-  const short = difficulty.short
-  if (short.startsWith('Н')) return 'border-l-2 !border-l-dashed' // "Ниже" - dashed
-  if (short.startsWith('В')) return 'border-l-[3px]' // "Выше" - толстая
-  return 'border-l-2 !border-l-solid' // Базовые - обычная одинарная
+  const linetype = difficulty.linetype || 'single'
+  const color = difficulty.color || '#FFFFFF'
+  
+  // Базовые стили для всех типов
+  const baseStyle = {
+    backgroundSize: '4px 100%',
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'left center',
+    paddingLeft: '8px' // Отступ от линии
+  }
+  
+  // Паттерн пунктира (4px линия, 4px пробел)
+  const dashedPattern = `repeating-linear-gradient(to bottom, ${color} 0px, ${color} 4px, transparent 4px, transparent 8px)`
+  // Сплошная линия
+  const solidPattern = `linear-gradient(to bottom, ${color}, ${color})`
+  // Прозрачная линия
+  const transparentPattern = `linear-gradient(to bottom, transparent, transparent)`
+  
+  if (linetype === 'dashed') {
+    // Ниже: [прозрачная 2px][пунктир 2px]
+    return {
+      ...baseStyle,
+      backgroundImage: `${transparentPattern}, ${dashedPattern}`,
+      backgroundSize: '2px 100%, 2px 100%',
+      backgroundPosition: 'left center, 2px center'
+    }
+  }
+  
+  if (linetype === 'double') {
+    // Выше: [пунктир 2px][сплошная 2px]
+    return {
+      ...baseStyle,
+      backgroundImage: `${dashedPattern}, ${solidPattern}`,
+      backgroundSize: '2px 100%, 2px 100%',
+      backgroundPosition: 'left center, 2px center'
+    }
+  }
+  
+  // Single (base): [прозрачная 2px][сплошная 2px]
+  return {
+    ...baseStyle,
+    backgroundImage: `${transparentPattern}, ${solidPattern}`,
+    backgroundSize: '2px 100%, 2px 100%',
+    backgroundPosition: 'left center, 2px center'
+  }
 }
 </script>
 
@@ -343,21 +359,18 @@ const getDifficultyBorderStyle = (difficulty) => {
     <!-- Заголовок с портретом и основными параметрами -->
     <div class="header-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
       <div class="flex items-start gap-4 sm:gap-6">
-        <!-- Портрет -->
-        <div class="character-avatar flex-shrink-0 self-start">
-          <img 
-            v-if="character.portrait" 
-            :src="`/images/presets/${character.portrait}.png`"
-            :alt="character.name"
-            class="w-24 h-24 sm:w-32 sm:h-32 rounded-xl border-2 border-slate-700 object-cover bg-slate-800"
-            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
-          />
-          <div 
-            :class="['w-24 h-24 sm:w-32 sm:h-32 rounded-xl border-2 border-slate-700 bg-slate-800 items-center justify-center text-4xl', character.portrait ? 'hidden' : 'flex']"
-          >
-            👤
-          </div>
-        </div>
+        <!-- Портрет с ранениями и защитой -->
+        <CharacterPortrait
+          :portrait="character.portrait"
+          :name="character.name"
+          :combat="character.combat"
+          :stats="character.stats"
+          :meleeDefence="meleeDefence"
+          :rangedDefence="rangedDefence"
+          :showDefence="true"
+          defenceLayout="left"
+          size="xl"
+        />
         
         <!-- Имя и класс -->
         <div class="flex-1 min-w-0 w-full sm:w-auto">
@@ -406,6 +419,16 @@ const getDifficultyBorderStyle = (difficulty) => {
       </div>
     </div>
     
+    <!-- Секция здоровья -->
+    <div class="health-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
+      <h2 class="text-lg sm:text-xl font-bold mb-4 text-slate-300 uppercase tracking-wide">Здоровье:</h2>
+      <HealthDisplay
+        :combat="character.combat || { healthType: 'simple', hp: 0, maxHp: 8, wounds: { scratch: 0, light: 0, heavy: 0, deadly: 0 } }"
+        :stats="character.stats || {}"
+        :readonly="true"
+      />
+    </div>
+    
     <!-- Таблица проверок -->
     <div class="checks-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
       <h2 class="text-lg sm:text-xl font-bold mb-4 text-slate-300 uppercase tracking-wide">Навыки:</h2>
@@ -416,31 +439,24 @@ const getDifficultyBorderStyle = (difficulty) => {
           <thead>
             <tr>
               <!-- Пустая ячейка в углу -->
-              <th class="bg-slate-950/60 border border-slate-700 p-2 text-left text-sm text-slate-500 uppercase w-40">
+              <td class="bg-slate-950/60 border border-slate-700 p-2 text-left text-sm text-slate-500 uppercase w-40">
                 Навыки:
-              </th>
+              </td>
               
-              <!-- Заголовки сложностей с цветными границами слева -->
-              <th 
+              <!-- Заголовки сложностей -->
+              <td 
                 v-for="(diff, index) in difficulties" 
                 :key="diff.value"
                 :class="[
-                  'border border-slate-700 p-2 text-center text-xs font-bold uppercase tracking-wide bg-slate-950/80',
-                  diff.class
+                  'border border-slate-700 p-2 text-center text-xs font-bold uppercase tracking-wide',
+                  diff.level === 7 ? 'bg-black' : 'bg-slate-950/80'
                 ]"
                 :style="{
-                  borderLeftWidth: diff.short.startsWith('В') ? '3px' : '2px',
-                  borderLeftStyle: diff.short.startsWith('Н') ? 'dashed' : 'solid',
-                  borderLeftColor: 
-                    diff.value <= 6 ? 'rgb(56 189 248)' :
-                    diff.value <= 15 ? 'rgb(163 230 53)' :
-                    diff.value <= 24 ? 'rgb(250 204 21)' :
-                    diff.value <= 33 ? 'rgb(251 146 60)' :
-                    'rgb(248 113 113)'
+                  color: diff.level === 7 ? '#FFFFFF' : diff.color
                 }"
               >
                 {{ diff.short }}
-              </th>
+              </td>
             </tr>
           </thead>
           
@@ -462,22 +478,15 @@ const getDifficultyBorderStyle = (difficulty) => {
                 v-for="diff in difficulties" 
                 :key="`${checkType.id}-${diff.value}`"
                 :class="[
-                  'border border-slate-700 p-2 text-center font-bold bg-slate-950/20',
-                  // Цвет текста в зависимости от результата
-                  getCellContent(checkType.id, diff).type === 'success' ? 'text-emerald-300' :
-                  getCellContent(checkType.id, diff).type === 'fail' ? 'text-red-400' :
-                  'text-slate-100'
+                  'border border-slate-700 p-2 text-center font-bold',
+                  // Особый стиль для Невозможной сложности
+                  diff.level === 7 ? 'bg-black text-white' : 'bg-slate-950/20',
+                  // Цвет текста в зависимости от результата (кроме Невозможной)
+                  diff.level !== 7 && getCellContent(checkType.id, diff).type === 'success' ? 'text-emerald-300' : '',
+                  diff.level !== 7 && getCellContent(checkType.id, diff).type === 'fail' ? 'text-red-400' : '',
+                  diff.level !== 7 && getCellContent(checkType.id, diff).type === 'number' ? 'text-slate-100' : ''
                 ]"
-                :style="{
-                  borderLeftWidth: diff.short.startsWith('В') ? '3px' : '2px',
-                  borderLeftStyle: diff.short.startsWith('Н') ? 'dashed' : 'solid',
-                  borderLeftColor: 
-                    diff.value <= 6 ? 'rgb(56 189 248)' :
-                    diff.value <= 15 ? 'rgb(163 230 53)' :
-                    diff.value <= 24 ? 'rgb(250 204 21)' :
-                    diff.value <= 33 ? 'rgb(251 146 60)' :
-                    'rgb(248 113 113)'
-                }"
+                :style="getDifficultyBorderStyle(diff)"
               >
                 <span class="text-base">{{ getCellContent(checkType.id, diff).value }}</span>
               </td>
@@ -592,12 +601,10 @@ const getDifficultyBorderStyle = (difficulty) => {
 
 /* Анимация при наведении на ячейки */
 .checks-section tbody td {
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .checks-section tbody td:hover {
-  transform: scale(1.05);
-  z-index: 1;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+  background-color: rgba(51, 65, 85, 0.3);
 }
 </style>

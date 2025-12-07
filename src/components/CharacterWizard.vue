@@ -1,11 +1,13 @@
 ﻿<script setup>
 import { useUserStore } from '@/stores/user'
+import { useCharactersStore } from '@/stores/characters'
 import { generateAvatar } from '@/utils/avatar'
 import { calculateMaxHP } from '@/utils/wounds'
 import CharacterCreationCanvas from './CharacterCreationCanvas.vue'
 
 const emit = defineEmits(['close', 'created'])
 const userStore = useUserStore()
+const charactersStore = useCharactersStore()
 
 const createCharacter = (formData) => {
   // Используем выбранный портрет или генерируем аватар
@@ -33,39 +35,39 @@ const createCharacter = (formData) => {
   // Рассчитываем максимальное HP на основе характеристик
   const maxHP = calculateMaxHP(formData.stats || {})
   
-  const character = userStore.addCharacter({
-    name: formData.name || 'Безымянный',
-    portrait: formData.portrait,
-    gender: formData.gender,
-    race: formData.race,
-    subrace: formData.subrace,
-    classId: formData.class,
-    avatar: avatar,
-    level: 1,
-    healthType: 'hp', // или 'wounds'
-    hp: { current: maxHP, max: maxHP },
-    wounds: {
-      scratch: { current: 0 },
-      light: { current: 0 },
-      heavy: { current: 0 },
-      deadly: { current: 0 }
-    },
-    defence: {
-      base: 0 // базовая защита, будет добавляться хитрость и броня
-    },
-    statusEffects: [],
-    stats: formData.stats,
-    skills: formData.skills,
-    equipment: {
-      armor: equipment.armor || 'clothes',
-      weaponSets: weaponSets,
-      activeSetIndex: 0,
-      wealth: equipment.wealth || 5,
-      epoch: equipment.epoch || 10
-    },
-    inventory: inventoryWeapons,
-    notes: formData.notes || ''
-  })
+  // Создаём персонажа через charactersStore
+  const character = charactersStore.createFromWizard(
+    userStore.userId,
+    userStore.nickname,
+    {
+      name: formData.name || 'Безымянный',
+      portrait: formData.portrait,
+      gender: formData.gender,
+      race: formData.race,
+      subrace: formData.subrace,
+      class: formData.class,
+      avatar: avatar,
+      stats: formData.stats,
+      skills: formData.skills,
+      equipment: {
+        armor: equipment.armor || 'clothes',
+        weapons: weapons,
+        items: [],
+        wealth: equipment.wealth || 5
+      },
+      combat: {
+        hp: maxHP,
+        maxHp: maxHP,
+        mp: 0,
+        maxMp: 0
+      }
+    }
+  )
+  
+  // Отправляем персонажа мастеру
+  setTimeout(() => {
+    sessionStore.sendCharactersToMaster()
+  }, 100)
   
   emit('created', character)
   emit('close')

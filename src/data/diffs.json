@@ -1,114 +1,173 @@
-{
-  "0": {
-    "name": "Ниже простой",
-    "class": "text-sky-200",
-    "short": "НП",
-    "linecolor": "#40a0d0",
-    "linetype": "dashed"
-  },
+﻿{
   "3": {
-    "name": "Простая",
-    "class": "text-sky-300",
-    "short": "П",
-    "linecolor": "#40a0d0",
-    "linetype": "single"
+    "name": "Ниже простой",
+    "short": "НП",
+    "level": 1,
+    "modifier": "below",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "dashed"
   },
   "6": {
-    "name": "Выше простой",
-    "class": "text-sky-400",
-    "short": "ВП",
-    "linecolor": "#40a0d0",
-    "linetype": "double"
+    "name": "Простая",
+    "short": "П",
+    "level": 1,
+    "modifier": "base",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "single"
   },
   "9": {
-    "name": "Ниже лёгкой",
-    "class": "text-lime-200",
-    "short": "НЛ",
-    "linecolor": "lime",
-    "linetype": "dashed"
+    "name": "Выше простой",
+    "short": "ВП",
+    "level": 1,
+    "modifier": "above",
+    "color": "#00DDFF",
+    "lightText": false,
+    "linetype": "double"
   },
   "12": {
-    "name": "Лёгкая",
-    "class": "text-lime-300",
-    "short": "Л",
-    "linecolor": "lime",
-    "linetype": "single"
+    "name": "Ниже лёгкой",
+    "short": "НЛ",
+    "level": 2,
+    "modifier": "below",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "dashed"
   },
   "15": {
-    "name": "Выше лёгкой",
-    "class": "text-lime-400",
-    "short": "ВЛ",
-    "linecolor": "lime",
-    "linetype": "double"
+    "name": "Лёгкая",
+    "short": "Л",
+    "level": 2,
+    "modifier": "base",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "single"
   },
   "18": {
-    "name": "Ниже средней",
-    "class": "text-yellow-200",
-    "short": "НС",
-    "linecolor": "orange",
-    "linetype": "dashed"
+    "name": "Выше лёгкой",
+    "short": "ВЛ",
+    "level": 2,
+    "modifier": "above",
+    "color": "#00CC44",
+    "lightText": false,
+    "linetype": "double"
   },
   "21": {
-    "name": "Средняя",
-    "class": "text-yellow-300",
-    "short": "С",
-    "linecolor": "orange",
-    "linetype": "single"
+    "name": "Ниже средней",
+    "short": "НС",
+    "level": 3,
+    "modifier": "below",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "dashed"
   },
   "24": {
-    "name": "Выше средней",
-    "class": "text-yellow-400",
-    "short": "ВС",
-    "linecolor": "orange",
-    "linetype": "double"
+    "name": "Средняя",
+    "short": "С",
+    "level": 3,
+    "modifier": "base",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "single"
   },
   "27": {
-    "name": "Ниже тяжёлой",
-    "class": "text-red-200",
-    "short": "НТ",
-    "linecolor": "red",
-    "linetype": "dashed"
+    "name": "Выше средней",
+    "short": "ВС",
+    "level": 3,
+    "modifier": "above",
+    "color": "#FFEE00",
+    "lightText": false,
+    "linetype": "double"
   },
   "30": {
-    "name": "Тяжёлая",
-    "class": "text-red-300",
-    "short": "Т",
-    "linecolor": "red",
-    "linetype": "single"
-  },
-  "33": {
-    "name": "Выше тяжёлой",
-    "class": "text-red-400",
-    "short": "ВТ",
-    "linecolor": "red",
-    "linetype": "double"
-  },
-  "36": {
-    "name": "Ниже чрезмерной",
-    "class": "text-purple-200",
-    "short": "НЧ",
-    "linecolor": "purple",
+    "name": "Ниже тяжёлой",
+    "short": "НТ",
+    "level": 4,
+    "modifier": "below",
+    "color": "#FF8800",
+    "lightText": false,
     "linetype": "dashed"
   },
-  "39": {
-    "name": "Чрезмерная",
-    "class": "text-purple-300",
-    "short": "Ч",
-    "linecolor": "purple",
+  "33": {
+    "name": "Тяжёлая",
+    "short": "Т",
+    "level": 4,
+    "modifier": "base",
+    "color": "#FF8800",
+    "lightText": false,
     "linetype": "single"
   },
-  "42": {
-    "name": "Выше чрезмерной",
-    "class": "text-purple-400",
-    "short": "ВЧ",
-    "linecolor": "purple",
+  "36": {
+    "name": "Выше тяжёлой",
+    "short": "ВТ",
+    "level": 4,
+    "modifier": "above",
+    "color": "#FF8800",
+    "lightText": false,
     "linetype": "double"
   },
+  "39": {
+    "name": "Ниже жестокой",
+    "short": "НЖ",
+    "level": 5,
+    "modifier": "below",
+    "color": "#CC0000",
+    "lightText": true,
+    "linetype": "dashed"
+  },
+  "42": {
+    "name": "Жестокая",
+    "short": "Ж",
+    "level": 5,
+    "modifier": "base",
+    "color": "#CC0000",
+    "lightText": true,
+    "linetype": "single"
+  },
   "45": {
-    "name": "Нереальная",
-    "class": "text-white",
-    "short": "Н",
-    "linecolor": "black",
+    "name": "Выше жестокой",
+    "short": "ВЖ",
+    "level": 5,
+    "modifier": "above",
+    "color": "#CC0000",
+    "lightText": true,
     "linetype": "double"
+  },
+  "48": {
+    "name": "Ниже кошмарной",
+    "short": "НК",
+    "level": 6,
+    "modifier": "below",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "dashed"
+  },
+  "51": {
+    "name": "Кошмарная",
+    "short": "К",
+    "level": 6,
+    "modifier": "base",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "single"
+  },
+  "54": {
+    "name": "Выше кошмарной",
+    "short": "ВК",
+    "level": 6,
+    "modifier": "above",
+    "color": "#440066",
+    "lightText": true,
+    "linetype": "double"
+  },
+  "60": {
+    "name": "Невозможная",
+    "short": "Н",
+    "level": 7,
+    "modifier": "base",
+    "color": "#000000",
+    "lightText": true,
+    "linetype": "single"
   }
 }

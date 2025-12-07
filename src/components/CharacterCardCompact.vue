@@ -158,17 +158,21 @@ const defenceArcs = computed(() => {
 })
 
 // HP или Wounds система
-const healthType = computed(() => props.character.healthType || 'hp') // 'hp' или 'wounds'
+const healthType = computed(() => props.character.combat?.healthType || 'simple') // 'simple' или 'wounds'
 
 // HP система (квадратики)
 const maxHP = computed(() => {
-  if (healthType.value !== 'hp') return 0
-  return calculateMaxHP(props.character.stats || {})
+  if (healthType.value !== 'simple') return 0
+  return props.character.combat?.maxHp || calculateMaxHP(props.character.stats || {})
+})
+
+const currentHP = computed(() => {
+  return props.character.combat?.hp || 0
 })
 
 const hpBlocks = computed(() => {
-  if (healthType.value !== 'hp') return []
-  const current = props.character.hp?.current || 0
+  if (healthType.value !== 'simple') return []
+  const current = currentHP.value
   const max = maxHP.value
   return Array.from({ length: max }, (_, i) => i < current)
 })
@@ -176,26 +180,26 @@ const hpBlocks = computed(() => {
 // Wounds система (травмы) с расчётом дополнительных слотов
 const woundSlots = computed(() => {
   if (healthType.value !== 'wounds') return null
-  return calculateWoundSlots(props.character.stats || {})
+  return calculateWoundSlots(props.character.stats || {}, props.character.combat?.bonusDeadlySlots || 0)
 })
 
 const wounds = computed(() => {
   if (healthType.value !== 'wounds') return null
   
   const slots = woundSlots.value
-  const currentWounds = props.character.wounds || {
-    scratch: { current: 0 },
-    light: { current: 0 },
-    heavy: { current: 0 },
-    deadly: { current: 0 }
+  const currentWounds = props.character.combat?.wounds || {
+    scratch: 0,
+    light: 0,
+    heavy: 0,
+    deadly: 0
   }
   
-  // Объединяем слоты и текущие значения
+  // Объединяем слоты и текущие значения (новый формат - числа, не объекты)
   return {
-    scratch: { ...slots.scratch, current: currentWounds.scratch?.current || 0 },
-    light: { ...slots.light, current: currentWounds.light?.current || 0 },
-    heavy: { ...slots.heavy, current: currentWounds.heavy?.current || 0 },
-    deadly: { ...slots.deadly, current: currentWounds.deadly?.current || 0 }
+    scratch: { ...slots.scratch, current: typeof currentWounds.scratch === 'number' ? currentWounds.scratch : (currentWounds.scratch?.current || 0) },
+    light: { ...slots.light, current: typeof currentWounds.light === 'number' ? currentWounds.light : (currentWounds.light?.current || 0) },
+    heavy: { ...slots.heavy, current: typeof currentWounds.heavy === 'number' ? currentWounds.heavy : (currentWounds.heavy?.current || 0) },
+    deadly: { ...slots.deadly, current: typeof currentWounds.deadly === 'number' ? currentWounds.deadly : (currentWounds.deadly?.current || 0) }
   }
 })
 
@@ -211,6 +215,13 @@ const woundPenalties = computed(() => {
   }
   
   return calculateWoundPenalties(currentWounds, woundSlots.value)
+})
+
+// Штраф от потерянного HP (каждые 3 HP = -1)
+const hpPenalty = computed(() => {
+  if (healthType.value !== 'simple') return 0
+  const lost = maxHP.value - currentHP.value
+  return Math.floor(lost / 3)
 })
 
 // Статус здоровья
@@ -237,7 +248,7 @@ const handleClick = () => {
 
 // Изменение HP
 const changeHP = (delta) => {
-  const current = props.character.hp?.current || 0
+  const current = currentHP.value
   const max = maxHP.value
   const newHP = Math.max(0, Math.min(max, current + delta))
   emit('update-hp', props.character.id, newHP)
@@ -245,7 +256,7 @@ const changeHP = (delta) => {
 
 // Нанести урон (для HP системы)
 const applyDamage = (damage) => {
-  const current = props.character.hp?.current || 0
+  const current = currentHP.value
   const max = maxHP.value
   const newHP = applyDamageToHP(current, max, damage)
   emit('update-hp', props.character.id, newHP)
@@ -379,16 +390,16 @@ const toggleHealthType = () => {
       <button 
         @click.stop="toggleHealthType" 
         class="health-toggle-btn"
-        :title="`Переключить на ${healthType === 'hp' ? 'Раны' : 'HP'}`"
+        :title="`Переключить на ${healthType === 'simple' ? 'Раны' : 'HP'}`"
       >
-        <Icon :icon="healthType === 'hp' ? 'mdi:heart-pulse' : 'mdi:bandage'" class="w-4 h-4" />
+        <Icon :icon="healthType === 'simple' ? 'mdi:heart-pulse' : 'mdi:bandage'" class="w-4 h-4" />
       </button>
     </div>
 
     <!-- Здоровье -->
     <div class="health-section" @click.stop>
       <!-- HP система (горизонтальные квадратики) -->
-      <div v-if="healthType === 'hp'" class="hp-container">
+      <div v-if="healthType === 'simple'" class="hp-container">
         <!-- Кнопки урона -->
         <div class="damage-buttons">
           <button @click.stop="applyDamage(1)" class="damage-btn scratch" title="Царапина (-1 HP)">Ц</button>
@@ -411,8 +422,13 @@ const toggleHealthType = () => {
         <!-- Кнопки +/- -->
         <div class="hp-controls-inline">
           <button @click.stop="changeHP(-1)" class="hp-btn" title="Отнять HP">−</button>
-          <span class="hp-text">{{ character.hp?.current || 0 }}/{{ maxHP }}</span>
+          <span class="hp-text">{{ currentHP }}/{{ maxHP }}</span>
           <button @click.stop="changeHP(1)" class="hp-btn" title="Добавить HP">+</button>
+        </div>
+        
+        <!-- Штраф от потерянного HP -->
+        <div v-if="hpPenalty > 0" class="hp-penalty">
+          Штраф: -{{ hpPenalty }}
         </div>
       </div>
 
