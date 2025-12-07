@@ -1,0 +1,1333 @@
+{
+  "items": [
+    {
+      "id": "clothes",
+      "category": "armor",
+      "subcat": "light",
+      "name": "Обычная одежда",
+      "desc": "Надевать такую в бой - довольно сомнительная затея. Однако на полях сражений нередко оказывались те, кто не смог себе позволить вовсе никакую броню. А иногда и серьёзных воинов нападение заставало не готовыми, погружёнными в обычные бытовые проблемы.",
+      "price": 1,
+      "epoch": 1,
+      "defence": 0,
+      "resist": 0,
+      "movement": 0,
+      "bursts": 0
+    },
+    {
+      "id": "makeshift_light_armor",
+      "category": "armor",
+      "subcat": "light",
+      "name": "Крепкая одежда",
+      "desc": "Некоторые виды одежды лучше других держат удар, что позволяет использовать их в качестве импровизированной брони. Это может быть куртка из толстой кожи, шкура зверя или вовсе обычные одеяния, на которые нашили твёрдые элементы.",
+      "price": 3,
+      "epoch": 2,
+      "defence": 3,
+      "resist": 0,
+      "movement": 0,
+      "bursts": 0
+    },
+    {
+      "id": "makeshift_heavy_armor",
+      "category": "armor",
+      "subcat": "heavy",
+      "name": "Кустарная тяжёлая броня",
+      "desc": "Хорошенько потрудившись, можно сделать из обычной одежды некое подобие брони. Обилие нашитых элементов здорово сковывает движение, зато такой доспех снижает входящий урон и (главное), очень дёшев в производстве.",
+      "price": 3,
+      "epoch": 2,
+      "defence": 0,
+      "resist": 1,
+      "movement": -1,
+      "bursts": -1
+    },
+    {
+      "id": "light_armor",
+      "category": "armor",
+      "subcat": "light",
+      "name": "Лёгкая броня",
+      "desc": "Лёгкая броня не сковывает движений и даёт кое-какую защиту - попасть в уязвимое место противнику становится значительно сложнее.",
+      "price": 5,
+      "epoch": 4,
+      "defence": 6,
+      "resist": 0,
+      "movement": 0,
+      "bursts": 0
+    },
+    {
+      "id": "heavy_armor",
+      "category": "armor",
+      "subcat": "heavy",
+      "name": "Тяжёлая броня",
+      "desc": "Хорошая тяжёлая броня лишь немного сковывает движения, но уворачиваться в ней уже гораздо сложнее. Зато, если по Вам всё же попали, урона Вы получите значительно меньше.",
+      "price": 5,
+      "epoch": 4,
+      "defence": 0,
+      "resist": 1,
+      "movement": -1,
+      "bursts": 0
+    },
+    {
+      "id": "late_light_armor",
+      "category": "armor",
+      "subcat": "light",
+      "name": "Поздняя лёгкая броня",
+      "desc": "Позволить себе такой шедевр мастерства бронников могут не многие, зато живут на поле боя эти счастливчики гораздо дольше других. Защищённых областей на теле больше, а маневренность при этом никак не страдает.",
+      "price": 7,
+      "epoch": 6,
+      "defence": 12,
+      "resist": 0,
+      "movement": 0,
+      "bursts": 0
+    },
+    {
+      "id": "late_medium_armor",
+      "category": "armor",
+      "subcat": "middle",
+      "name": "Поздняя средняя броня",
+      "desc": "Хороший компромисс между подвижностью и защищённостью, но по совершенно бескомпромиссной цене.",
+      "price": 7,
+      "epoch": 6,
+      "defence": 3,
+      "resist": 1,
+      "movement": 0,
+      "bursts": 0
+    },
+    {
+      "id": "late_heavy_armor",
+      "category": "armor",
+      "subcat": "heavy",
+      "name": "Поздняя тяжёлая броня",
+      "desc": "Для тех, кто хочет почувствовать себя настоящим танком на поле боя - беспрецедентный уровень защищённости при минимальной подвижности. Несмотря на огромную цену этих доспехов, вряд ли найдётся идиот, который захочет сразиться с Вами ради такого трофея.",
+      "price": 7,
+      "epoch": 6,
+      "defence": 0,
+      "resist": 2,
+      "movement": -1,
+      "bursts": 0
+    },
+    {
+      "id": "simple_spear",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Простое копьё",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 2,
+      "epoch": 2,
+      "attack": 4,
+      "defence": 3,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар"
+      }
+    },
+    {
+      "id": "iron_spear",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Железное копьё",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 4,
+      "epoch": 4,
+      "attack": 5,
+      "defence": 3,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "4": "Точный удар",
+        "6": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "steel_spear",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Стальное копьё",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 6,
+      "epoch": 6,
+      "attack": 6,
+      "defence": 4,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "4": "Точный удар",
+        "6": "Тяжёлый урон",
+        "9": "Огромный урон"
+      }
+    },
+    {
+      "id": "iron_glaive",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Глефа",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 5,
+      "attack": 6,
+      "defence": 2,
+      "damageType": "Рубящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "3": "Тяжёлый урон",
+        "6": "Точный удар",
+        "9": "Огромный урон"
+      }
+    },
+    {
+      "id": "steel_glaive",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Стальная глефа",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 7,
+      "epoch": 7,
+      "attack": 8,
+      "defence": 4,
+      "damageType": "Рубящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "2": "Тяжёлый урон",
+        "4": "Точный удар",
+        "8": "Огромный урон"
+      }
+    },
+    {
+      "id": "iron_halberd",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Алебарда",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 5,
+      "attack": 4,
+      "defence": 3,
+      "damageType": "Рубящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "2": "Тяжёлый урон",
+        "6": "Огромный урон"
+      }
+    },
+    {
+      "id": "steel_halberd",
+      "category": "weapon",
+      "subcat": "spears",
+      "name": "Стальная алебарда",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 7,
+      "epoch": 7,
+      "attack": 5,
+      "defence": 4,
+      "damageType": "Рубящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "2": "Тяжёлый урон",
+        "6": "Огромный урон"
+      }
+    },
+    {
+      "id": "simple_bow",
+      "category": "weapon",
+      "subcat": "bows",
+      "name": "Короткий лук",
+      "desc": "",
+      "spec": "Нельзя стрелять с порывом",
+      "length": 2,
+      "hands": 2,
+      "price": 3,
+      "epoch": 2,
+      "attack": 6,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар"
+      }
+    },
+    {
+      "id": "strong_bow",
+      "category": "weapon",
+      "subcat": "bows",
+      "name": "Боевой лук",
+      "desc": "",
+      "spec": "",
+      "length": 2,
+      "hands": 2,
+      "price": 4,
+      "epoch": 4,
+      "attack": 6,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар",
+        "9": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "longbow",
+      "category": "weapon",
+      "subcat": "bows",
+      "name": "Длинный лук",
+      "desc": "",
+      "spec": "Нельзя стрелять без порыва. Можно вкладывать в выстрел второй порыв, тогда игнорирует единицу брони.",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 4,
+      "attack": 6,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "3": "Точный удар",
+        "6": "Тяжёлый урон",
+        "12": "Огромный урон"
+      }
+    },
+    {
+      "id": "stone_knife",
+      "category": "weapon",
+      "subcat": "daggers",
+      "name": "Простой нож",
+      "desc": "",
+      "length": 1,
+      "hands": 0.5,
+      "price": 1,
+      "epoch": 1,
+      "attack": 2,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "5": "Точный удар"
+      }
+    },
+    {
+      "id": "knife",
+      "category": "weapon",
+      "subcat": "daggers",
+      "name": "Добротный нож",
+      "desc": "",
+      "length": 1,
+      "hands": 0.5,
+      "price": 2,
+      "epoch": 2,
+      "attack": 2,
+      "defence": 1,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "3": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_dagger",
+      "category": "weapon",
+      "subcat": "daggers",
+      "name": "Cтальной кинжал",
+      "desc": "",
+      "length": 1,
+      "hands": 0.5,
+      "price": 5,
+      "epoch": 4,
+      "attack": 3,
+      "defence": 1,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "3": "Точный удар",
+        "4": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "stiletto",
+      "category": "weapon",
+      "subcat": "daggers",
+      "name": "Стилет",
+      "desc": "Стилет не особенно то удобен в бою, зато замечательно пронзает многие виды доспехов.",
+      "length": 1,
+      "hands": 0.5,
+      "price": 6,
+      "epoch": 5,
+      "attack": 2,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 2,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "3": "Точный удар",
+        "6": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "main_gauche",
+      "category": "weapon",
+      "subcat": "daggers",
+      "name": "Дага",
+      "desc": "Дага - преимущественно защитный кинжал во вторую руку, тем не менее может применяться и для нанесения серьёзных ударов. Особенно, если вражеская защита пробита. Атаки дагой во второй руке могут наносить ту же категорию ранения, что и атаки основным оружием, а не на категорию ниже, как обычно.",
+      "length": 1,
+      "hands": 1,
+      "price": 6,
+      "epoch": 5,
+      "attack": 2,
+      "defence": 4,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "3": "Точный удар",
+        "6": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "wooden_flail",
+      "category": "weapon",
+      "subcat": "flails",
+      "name": "Цеп",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 1,
+      "epoch": 2,
+      "attack": 6,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон"
+      }
+    },
+    {
+      "id": "iron_flail",
+      "category": "weapon",
+      "subcat": "flails",
+      "name": "Железный цеп",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 5,
+      "epoch": 4,
+      "attack": 8,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "6": "Лёгкий урон",
+        "12": "Тяжёлый урон",
+        "15": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_flail",
+      "category": "weapon",
+      "subcat": "flails",
+      "name": "Стальной цеп",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 6,
+      "epoch": 6,
+      "attack": 9,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "6": "Лёгкий урон",
+        "9": "Тяжёлый урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "wooden_club",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Дубинка",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 1,
+      "epoch": 1,
+      "attack": 2,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "6": "Лёгкий урон"
+      }
+    },
+    {
+      "id": "simple_staff",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Простой посох",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 1,
+      "epoch": 1,
+      "attack": 2,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "6": "Лёгкий урон"
+      }
+    },
+    {
+      "id": "battle_staff",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Боевой посох",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 3,
+      "epoch": 3,
+      "attack": 4,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "5": "Лёгкий урон",
+        "10": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "steel_staff",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Стальной посох",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 5,
+      "attack": 4,
+      "defence": 4,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "5": "Лёгкий урон",
+        "10": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "iron_mace",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Булава",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 5,
+      "epoch": 4,
+      "attack": 4,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "6": "Тяжёлый урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_mace",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Стальная булава",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 7,
+      "epoch": 6,
+      "attack": 5,
+      "defence": 3,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "4": "Тяжёлый урон",
+        "6": "Точный удар"
+      }
+    },
+    {
+      "id": "simple_axe",
+      "category": "weapon",
+      "subcat": "axes",
+      "name": "Плотницкий топор",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 2,
+      "epoch": 1,
+      "attack": 4,
+      "defence": 2,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "8": "Тяжёлый урон",
+        "9": "Точный удар"
+      }
+    },
+    {
+      "id": "battle_axe",
+      "category": "weapon",
+      "subcat": "axes",
+      "name": "Боевой топорик",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 5,
+      "epoch": 4,
+      "attack": 6,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар",
+        "9": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "steel_axe",
+      "category": "weapon",
+      "subcat": "axes",
+      "name": "Стальной топор",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 6,
+      "epoch": 7,
+      "attack": 8,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "4": "Точный удар",
+        "6": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "battle_greataxe",
+      "category": "weapon",
+      "subcat": "axes",
+      "name": "Двуручный топор",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 6,
+      "epoch": 5,
+      "attack": 6,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "3": "Тяжёлый урон",
+        "9": "Огромный урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_greataxe",
+      "category": "weapon",
+      "subcat": "axes",
+      "name": "Стальной двуручный топор",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 7,
+      "epoch": 7,
+      "attack": 8,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "2": "Тяжёлый урон",
+        "8": "Огромный урон",
+        "10": "Точный удар"
+      }
+    },
+    {
+      "id": "stone_hammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Каменный молоток",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 2,
+      "epoch": 2,
+      "attack": 2,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Лёгкий урон",
+        "6": "Тяжёлый урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "stone_greathammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Каменная кувалда",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 2,
+      "epoch": 2,
+      "attack": 0,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Тяжёлый урон",
+        "6": "Огромный урон"
+      }
+    },
+    {
+      "id": "iron_hammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Железный молот",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 3,
+      "epoch": 3,
+      "attack": 3,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Лёгкий урон",
+        "5": "Тяжёлый урон",
+        "10": "Точный удар"
+      }
+    },
+    {
+      "id": "iron_greathammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Железная кувалда",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 4,
+      "attack": 0,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Тяжёлый урон",
+        "5": "Огромный урон"
+      }
+    },
+    {
+      "id": "iron_warhammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Железный боевой молот",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 4,
+      "epoch": 4,
+      "attack": 4,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 2,
+      "damage": {
+        "0": "Лёгкий урон",
+        "6": "Тяжёлый урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "iron_greatwarhammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Двуручный боевой молот",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 6,
+      "epoch": 5,
+      "attack": 2,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 2,
+      "damage": {
+        "0": "Тяжёлый урон",
+        "6": "Огромный урон",
+        "12": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_warhammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Стальной боевой молот",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 6,
+      "epoch": 7,
+      "attack": 5,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 2,
+      "damage": {
+        "0": "Лёгкий урон",
+        "4": "Тяжёлый урон",
+        "8": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_greatwarhammer",
+      "category": "weapon",
+      "subcat": "maces",
+      "name": "Длинный стальной боевой молот",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 7,
+      "epoch": 7,
+      "attack": 3,
+      "defence": 2,
+      "damageType": "Дробящий",
+      "armorPen": 2,
+      "damage": {
+        "0": "Тяжёлый урон",
+        "4": "Огромный урон",
+        "8": "Точный удар"
+      }
+    },
+    {
+      "id": "wooden_buckler",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Деревянный баклер",
+      "desc": "",
+      "spec": "Баклер может использоваться для атак, как второе оружие.",
+      "length": 0,
+      "hands": 0.5,
+      "price": 5,
+      "epoch": 4,
+      "attack": 1,
+      "defence": {
+        "front": {
+          "melee": 3,
+          "ranged": 3
+        },
+        "side": {
+          "melee": 3,
+          "ranged": 0
+        }
+      }
+    },
+    {
+      "id": "wooden_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Деревянный щит",
+      "desc": "",
+      "spec": "Небольшим щитом можно толкать противника, затратив один порыв.",
+      "length": 0,
+      "hands": 1,
+      "price": 4,
+      "epoch": 3,
+      "attack": 1,
+      "defence": {
+        "front": {
+          "melee": 6,
+          "ranged": 6
+        }
+      }
+    },
+    {
+      "id": "large_wooden_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Большой деревянный щит",
+      "desc": "",
+      "length": 0,
+      "hands": 1,
+      "price": 5,
+      "epoch": 3,
+      "defence": {
+        "front": {
+          "melee": 6,
+          "ranged": 9
+        }
+      }
+    },
+    {
+      "id": "wooden_tower_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Деревянный башенный щит",
+      "desc": "",
+      "length": 0,
+      "hands": 1,
+      "price": 5,
+      "epoch": 3,
+      "movement": -1,
+      "attack": -3,
+      "defence": {
+        "front": {
+          "melee": 9,
+          "ranged": 12
+        }
+      }
+    },
+    {
+      "id": "metal_buckler",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Стальной баклер",
+      "desc": "",
+      "spec": "Баклер может использоваться для атак, как второе оружие.",
+      "length": 0,
+      "hands": 0.5,
+      "price": 6,
+      "epoch": 6,
+      "attack": 3,
+      "defence": {
+        "front": {
+          "melee": 6,
+          "ranged": 3
+        },
+        "side": {
+          "melee": 6,
+          "ranged": 0
+        }
+      }
+    },
+    {
+      "id": "metal_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Стальной щит",
+      "desc": "",
+      "spec": "Небольшим щитом можно толкать противника, затратив один порыв.",
+      "length": 0,
+      "hands": 1,
+      "price": 7,
+      "epoch": 6,
+      "attack": 3,
+      "defence": {
+        "front": {
+          "melee": 6,
+          "ranged": 6
+        }
+      }
+    },
+    {
+      "id": "large_metal_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Большой стальной щит",
+      "desc": "",
+      "length": 0,
+      "hands": 1,
+      "price": 5,
+      "epoch": 7,
+      "attack": 1,
+      "defence": {
+        "front": {
+          "melee": 9,
+          "ranged": 9
+        }
+      }
+    },
+    {
+      "id": "metal_tower_shield",
+      "category": "shield",
+      "subcat": "shields",
+      "name": "Cтальной башенный щит",
+      "desc": "",
+      "length": 0,
+      "hands": 1,
+      "price": 7,
+      "epoch": 7,
+      "defence": {
+        "front": {
+          "melee": 12,
+          "ranged": 12
+        }
+      }
+    },
+    {
+      "id": "iron_shortsword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Короткий меч",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 4,
+      "epoch": 3,
+      "attack": 3,
+      "defence": 5,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "4": "Лёгкий урон",
+        "8": "Точный удар",
+        "12": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "iron_sword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Меч пехотинца",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 4,
+      "epoch": 4,
+      "attack": 5,
+      "defence": 5,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар",
+        "10": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "iron_falchion",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Фальшион",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 4,
+      "epoch": 4,
+      "attack": 7,
+      "defence": 4,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар",
+        "10": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "iron_greatsword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Двуручный меч",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 5,
+      "epoch": 4,
+      "attack": 6,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "4": "Тяжёлый урон",
+        "8": "Огромный урон"
+      }
+    },
+    {
+      "id": "steel_shortsword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Стальной короткий меч",
+      "desc": "",
+      "length": 1,
+      "hands": 1,
+      "price": 6,
+      "epoch": 6,
+      "attack": 4,
+      "defence": 5,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Точный удар",
+        "9": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "steel_sword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Стальной меч",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 7,
+      "epoch": 6,
+      "attack": 6,
+      "defence": 6,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "4": "Точный удар",
+        "8": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "steel_saber",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Сабля",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 7,
+      "epoch": 7,
+      "attack": 8,
+      "defence": 3,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Тяжёлый урон",
+        "8": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_scimitar",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Скимитар",
+      "desc": "",
+      "length": 2,
+      "hands": 1,
+      "price": 7,
+      "epoch": 7,
+      "attack": 9,
+      "defence": 2,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "6": "Тяжёлый урон",
+        "9": "Точный удар"
+      }
+    },
+    {
+      "id": "steel_greatsword",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Качественный двуручный меч",
+      "desc": "",
+      "length": 2,
+      "hands": 2,
+      "price": 7,
+      "epoch": 6,
+      "attack": 7,
+      "defence": 4,
+      "damageType": "Режущий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Лёгкий урон",
+        "4": "Тяжёлый урон",
+        "6": "Огромный урон"
+      }
+    },
+    {
+      "id": "rapier",
+      "category": "weapon",
+      "subcat": "swords",
+      "name": "Рапира",
+      "desc": "",
+      "length": 2,
+      "hands": 1.5,
+      "price": 6,
+      "epoch": 7,
+      "attack": 7,
+      "defence": 3,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "2": "Лёгкий урон",
+        "6": "Точный удар",
+        "8": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "hand_crossbow",
+      "category": "weapon",
+      "subcat": "crossbows",
+      "name": "Ручной арбалет",
+      "desc": "Требует порыва на перезарядку",
+      "length": 2,
+      "hands": 1.5,
+      "price": 5,
+      "epoch": 5,
+      "attack": 4,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "5": "Лёгкий урон"
+      }
+    },
+    {
+      "id": "crossbow",
+      "category": "weapon",
+      "subcat": "crossbows",
+      "name": "Арбалет",
+      "desc": "Требуется два порыва или полное основное действие на перезарядку",
+      "length": 2,
+      "hands": 2,
+      "price": 6,
+      "epoch": 5,
+      "attack": 6,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "4": "Лёгкий урон",
+        "6": "Точный удар",
+        "8": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "heavy_crossbow",
+      "category": "weapon",
+      "subcat": "crossbows",
+      "name": "Тяжёлый арбалет",
+      "desc": "Требуется полное действие и один порыв на перезарядку, в процессе нельзя передвигаться.",
+      "length": 2,
+      "hands": 2,
+      "price": 6,
+      "epoch": 5,
+      "attack": 8,
+      "defence": 0,
+      "damageType": "Колющий",
+      "armorPen": 1,
+      "damage": {
+        "0": "Царапина",
+        "4": "Лёгкий урон",
+        "6": "Точный удар",
+        "8": "Тяжёлый урон"
+      }
+    },
+    {
+      "id": "sling",
+      "category": "weapon",
+      "subcat": "slings",
+      "name": "Простая праща",
+      "desc": "",
+      "spec": "Нельзя стрелять с порывом",
+      "length": 2,
+      "hands": 2,
+      "price": 2,
+      "epoch": 2,
+      "attack": 3,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон"
+      }
+    },
+    {
+      "id": "heavy_sling",
+      "category": "weapon",
+      "subcat": "slings",
+      "name": "Боевая праща",
+      "desc": "",
+      "spec": "Нельзя стрелять без порыва",
+      "length": 2,
+      "hands": 2,
+      "price": 4,
+      "epoch": 3,
+      "attack": 4,
+      "defence": 0,
+      "damageType": "Дробящий",
+      "armorPen": 0,
+      "damage": {
+        "0": "Царапина",
+        "3": "Лёгкий урон",
+        "9": "Тяжёлый урон"
+      }
+    }
+  ],
+  "metadata": {
+    "systemName": "triP Items",
+    "version": "1.0",
+    "totalItems": 110
+  }
+}
