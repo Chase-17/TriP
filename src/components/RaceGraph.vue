@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import racesData from '@/data/races.json'
 import aspectsData from '@/data/aspects.json'
+import { racePortraitUrl } from '@/utils/assets'
 
 const props = defineProps({
   selectedRace: {
@@ -142,7 +143,7 @@ const getHexagonPath = (cx, cy, size) => {
 
 // Функция для получения пути к изображению расы
 const getRaceImageUrl = (raceId) => {
-  return `/images/races/portraits/${raceId}_${props.gender}.png`
+  return racePortraitUrl(raceId, props.gender)
 }
 
 // Проверка загрузки изображения

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import itemsData from '@/data/items.json'
+import { itemImageUrl } from '@/utils/assets'
 
 const props = defineProps({
   character: {
@@ -501,7 +502,7 @@ const filteredAvailableItems = computed(() => {
             <!-- Image -->
             <div class="w-48 h-48 mx-auto bg-slate-950/50 rounded-xl p-4 flex items-center justify-center">
               <img
-                :src="`/images/items/${selectedItemDetail.id}.png`"
+                :src="itemImageUrl(selectedItemDetail.id)"
                 :alt="selectedItemDetail.name"
                 class="w-full h-full object-contain"
                 @error="(e) => e.target.style.display = 'none'"

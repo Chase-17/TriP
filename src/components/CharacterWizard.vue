@@ -3,6 +3,7 @@ import { useUserStore } from '@/stores/user'
 import { useCharactersStore } from '@/stores/characters'
 import { generateAvatar } from '@/utils/avatar'
 import { calculateMaxHP } from '@/utils/wounds'
+import { presetUrl } from '@/utils/assets'
 import CharacterCreationCanvas from './CharacterCreationCanvas.vue'
 
 const emit = defineEmits(['close', 'created'])
@@ -12,7 +13,7 @@ const charactersStore = useCharactersStore()
 const createCharacter = (formData) => {
   // Используем выбранный портрет или генерируем аватар
   const avatar = formData.portrait 
-    ? `/images/presets/${formData.portrait}.png`
+    ? presetUrl(formData.portrait)
     : generateAvatar(formData.name || 'Unknown')
   
   // Подготавливаем экипировку и инвентарь

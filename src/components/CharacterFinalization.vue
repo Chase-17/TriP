@@ -38,7 +38,7 @@
             <div class="selected-portrait-container">
               <img
                 v-if="selectedPortrait"
-                :src="`/images/presets/${selectedPortrait}.png`"
+                :src="presetUrl(selectedPortrait)"
                 :alt="`Портрет ${selectedPortrait}`"
                 class="selected-portrait-image"
               />
@@ -75,7 +75,7 @@
                 :class="{ selected: selectedPortrait === num }"
               >
                 <img
-                  :src="`/images/presets/${num}.png`"
+                  :src="presetUrl(num)"
                   :alt="`Портрет ${num}`"
                   class="portrait-image"
                   loading="lazy"
@@ -108,6 +108,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
+import { presetUrl } from '@/utils/assets'
 
 const props = defineProps({
   name: {

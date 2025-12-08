@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import itemsData from '@/data/items.json'
+import { presetUrl } from '@/utils/assets'
 import { 
   calculateMaxHP, 
   applyDamageToHP, 
@@ -34,7 +35,7 @@ const getPortraitUrl = (portrait) => {
   // Если это уже полный URL или путь
   if (portraitStr.startsWith('http') || portraitStr.startsWith('/')) return portraitStr
   // Если это пресет (например, "preset1"), добавляем путь
-  return `/images/presets/${portraitStr}.png`
+  return presetUrl(portraitStr)
 }
 
 const portraitUrl = computed(() => getPortraitUrl(props.character.portrait))

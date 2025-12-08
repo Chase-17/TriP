@@ -159,6 +159,7 @@ import { Icon } from '@iconify/vue'
 import racesData from '@/data/races.json'
 import aspectsData from '@/data/aspects.json'
 import subracesData from '@/data/subraces.json'
+import { racePortraitUrl } from '@/utils/assets'
 
 const props = defineProps({
   selectedRace: {
@@ -257,7 +258,7 @@ const getAspectName = (aspectId) => {
 
 // Get race image URL
 const getRaceImageUrl = computed(() => {
-  return `/images/races/portraits/${props.selectedRace}_${props.gender}.png`
+  return racePortraitUrl(props.selectedRace, props.gender)
 })
 
 // Generate hexagon path

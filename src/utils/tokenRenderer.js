@@ -10,6 +10,7 @@
 
 import diffsData from '@/data/diffs.json'
 import { calculateWoundSlots } from '@/utils/wounds'
+import { assetUrl } from '@/utils/assets'
 
 // Кэш загруженных изображений
 const imageCache = new Map()
@@ -29,25 +30,29 @@ export const getPortraitUrl = (portrait) => {
   
   // Если число — это индекс пресета
   if (typeof portrait === 'number') {
-    return `/images/presets/${portrait}.png`
+    return assetUrl(`/images/presets/${portrait}.png`)
   }
   
   // Если не строка — пробуем преобразовать
   if (typeof portrait !== 'string') {
-    return `/images/presets/${String(portrait)}.png`
+    return assetUrl(`/images/presets/${String(portrait)}.png`)
   }
   
   // Уже полный URL или data/blob URL
   if (portrait.startsWith('http://') || 
       portrait.startsWith('https://') || 
       portrait.startsWith('data:') || 
-      portrait.startsWith('blob:') ||
-      portrait.startsWith('/')) {
+      portrait.startsWith('blob:')) {
     return portrait
   }
   
+  // Путь начинается с / — добавляем base
+  if (portrait.startsWith('/')) {
+    return assetUrl(portrait)
+  }
+  
   // Название пресета -> путь к файлу
-  return `/images/presets/${portrait}.png`
+  return assetUrl(`/images/presets/${portrait}.png`)
 }
 
 /**

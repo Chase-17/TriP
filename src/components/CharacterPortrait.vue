@@ -11,6 +11,7 @@
  */
 import { computed } from 'vue'
 import { calculateWoundSlots } from '@/utils/wounds'
+import { presetUrl } from '@/utils/assets'
 import diffsData from '@/data/diffs.json'
 
 const props = defineProps({
@@ -519,7 +520,7 @@ const totalSize = computed(() => pixelSize.value + defencePadding.value * 2)
       <div class="portrait-image">
         <img 
           v-if="portrait" 
-          :src="`/images/presets/${portrait}.png`"
+          :src="presetUrl(portrait)"
           :alt="name"
           class="portrait-img"
           @error="$event.target.style.display = 'none'"

@@ -10,6 +10,7 @@ import racesData from '@/data/races.json'
 import aspectsData from '@/data/aspects.json'
 import subracesData from '@/data/subraces.json'
 import classesData from '@/data/classes.json'
+import { raceImageUrl, genderIconUrl, classImageUrl } from '@/utils/assets'
 
 const emit = defineEmits(['close', 'created'])
 
@@ -213,14 +214,14 @@ const getAspectShortCode = (aspectId) => {
 // Get race image URL with optional subrace (aspect)
 // Structure: /images/races/{raceId}/{gender}/base.png or {shortCode}.png (w/k/c/s/m/n)
 // Fallback: subrace portrait → base portrait
-const getRaceImageUrl = (raceId, gender, aspectId = null) => {
+const getRaceImageUrlLocal = (raceId, gender, aspectId = null) => {
   if (aspectId) {
     // Use short code for subrace portrait (w/k/c/s/m/n)
     const shortCode = getAspectShortCode(aspectId)
-    return `/images/races/${raceId}/${gender}/${shortCode}.png`
+    return raceImageUrl(raceId, gender, shortCode)
   }
   // Base portrait
-  return `/images/races/${raceId}/${gender}/base.png`
+  return raceImageUrl(raceId, gender, 'base')
 }
 
 // Fallback handler for image load errors
@@ -235,7 +236,7 @@ const handleImageError = (event, raceId, gender, aspectId = null) => {
   if (aspectId && shortCode && currentSrc.includes(`/${raceId}/${gender}/${shortCode}.png`)) {
     console.log(`Subrace portrait not found: ${raceId}/${gender}/${shortCode}.png (aspect: ${aspectId}), falling back to base`)
     // Fallback to base portrait
-    imgElement.src = `/images/races/${raceId}/${gender}/base.png`
+    imgElement.src = raceImageUrl(raceId, gender, 'base')
     return
   }
   
@@ -1032,7 +1033,7 @@ const showClasses = computed(() => step.value === 4)
               :y="canvasSize/2 - 350"
               width="560"
               height="700"
-              :href="`/images/gender/male.png`"
+              :href="genderIconUrl('male')"
               class="cursor-pointer opacity-90 hover:opacity-100 transition-opacity"
               :class="{ 'brightness-110': formData.gender === 'm' }"
               @click="selectGender('m')"
@@ -1049,7 +1050,7 @@ const showClasses = computed(() => step.value === 4)
               :y="canvasSize/2 - 350"
               width="560"
               height="700"
-              :href="`/images/gender/female.png`"
+              :href="genderIconUrl('female')"
               class="cursor-pointer opacity-90 hover:opacity-100 transition-opacity"
               :class="{ 'brightness-110': formData.gender === 'f' }"
               @click="selectGender('f')"
@@ -1176,7 +1177,7 @@ const showClasses = computed(() => step.value === 4)
               <!-- Race portrait -->
               <g :clip-path="`url(#clip-${race.id})`">
                 <image
-                  :href="getRaceImageUrl(race.id, formData.gender)"
+                  :href="getRaceImageUrlLocal(race.id, formData.gender)"
                   x="-48"
                   y="-48"
                   width="96"
@@ -1265,7 +1266,7 @@ const showClasses = computed(() => step.value === 4)
           <g :transform="`translate(${canvasSize/2}, ${canvasSize/2})`">
             <g :clip-path="`url(#clip-center-race)`">
               <image
-                :href="getRaceImageUrl(selectedRace.id, formData.gender, selectedAspectId)"
+                :href="getRaceImageUrlLocal(selectedRace.id, formData.gender, selectedAspectId)"
                 x="-120"
                 y="-120"
                 width="240"
@@ -1487,7 +1488,7 @@ const showClasses = computed(() => step.value === 4)
                 class="pointer-events-none transition-all duration-300"
               >
                 <img
-                  :src="`/images/classes/${classItem.id}.png`"
+                  :src="classImageUrl(classItem.id)"
                   :style="{
                     width: '100%',
                     height: '100%',
@@ -1610,7 +1611,7 @@ const showClasses = computed(() => step.value === 4)
                   </div>
                   
                   <img
-                    :src="`/images/classes/${formData.class}.png`"
+                    :src="classImageUrl(formData.class)"
                     :alt="classes.find(c => c.id === formData.class).name[formData.gender]"
                     class="w-full aspect-square object-cover rounded-lg border-2 border-slate-700"
                   />

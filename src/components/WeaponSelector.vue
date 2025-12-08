@@ -12,7 +12,7 @@
         <!-- Image -->
         <div class="weapon-image-container">
           <img
-            :src="`/images/items/${weapon.id}.png`"
+            :src="itemImageUrl(weapon.id)"
             :alt="weapon.name"
             class="weapon-image"
             @error="(e) => e.target.style.display = 'none'"
@@ -61,7 +61,7 @@
             <!-- Image -->
             <div class="modal-weapon-image">
               <img
-                :src="`/images/items/${selectedWeapon.id}.png`"
+                :src="itemImageUrl(selectedWeapon.id)"
                 :alt="selectedWeapon.name"
                 class="w-full h-full object-contain"
                 @error="(e) => e.target.style.display = 'none'"
@@ -223,6 +223,7 @@ import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import itemsData from '@/data/items.json'
 import epochsData from '@/data/epochs.json'
+import { itemImageUrl } from '@/utils/assets'
 
 const props = defineProps({
   modelValue: {

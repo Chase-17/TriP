@@ -24,7 +24,7 @@
       <!-- Armor image -->
       <div class="armor-image-container">
         <img
-          :src="`/images/items/${currentArmor.id}.png`"
+          :src="itemImageUrl(currentArmor.id)"
           :alt="currentArmor.name"
           class="armor-image"
           @error="(e) => e.target.style.display = 'none'"
@@ -113,6 +113,7 @@ import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import itemsData from '@/data/items.json'
 import epochsData from '@/data/epochs.json'
+import { itemImageUrl } from '@/utils/assets'
 
 const props = defineProps({
   modelValue: {
