@@ -9,6 +9,7 @@ import { storeToRefs } from 'pinia'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
 import { useCharactersStore } from '@/stores/characters'
+import { useBattleMapStore } from '@/stores/battleMap'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
@@ -22,6 +23,7 @@ const router = useRouter()
 const session = useSessionStore()
 const userStore = useUserStore()
 const charactersStore = useCharactersStore()
+const battleMapStore = useBattleMapStore()
 
 const { roomId, status, connections } = storeToRefs(session)
 const { nickname, avatar, currentView } = storeToRefs(userStore)
@@ -55,6 +57,24 @@ const connectionError = ref('')
 const isMobile = ref(isMobileScreen())
 const pendingAction = ref(null)
 
+// Выбранные объекты на карте (для мобильной инфокарточки)
+const selectedToken = ref(null)
+const selectedHex = ref(null)
+
+// Активное предложение реакции от мастера
+const reactionPrompt = ref(null)
+
+// Направление персонажа игрока
+const playerFacing = computed(() => {
+  if (!playerCharacter.value) return 0
+  // Получаем токен персонажа из карты
+  const token = battleMapStore.getTokenByCharacterId?.(playerCharacter.value.id)
+  return token?.facing || 0
+})
+
+// Отладка
+console.log('PlayerRoom: isMobile =', isMobile.value, 'screen width =', window.innerWidth)
+
 const navItems = [
   { id: 'chat', label: 'Чат', icon: '💬' },
   { id: 'character-sheet', label: 'Персонаж', icon: '👤' },
@@ -64,7 +84,10 @@ const navItems = [
 // Персонаж игрока
 const playerCharacter = computed(() => {
   const userId = userStore.userId
-  return characters.value.find(char => char.userId === userId)
+  console.log('Поиск персонажа игрока:', { userId, characters: characters.value.length })
+  const character = characters.value.find(char => char.ownerId === userId)
+  console.log('Найденный персонаж:', character)
+  return character
 })
 
 // Определение, чей сейчас ход (заглушка)
@@ -91,6 +114,9 @@ onMounted(async () => {
   try {
     session.joinRoom(roomIdParam)
     isConnecting.value = false
+    
+    // Настраиваем слушатель реакций после подключения
+    setupReactionListener()
   } catch (error) {
     connectionError.value = 'Не удалось подключиться к комнате'
     isConnecting.value = false
@@ -132,10 +158,90 @@ const handleSelectAction = (action) => {
 }
 
 const handleConfirmAction = () => {
-  if (pendingAction.value) {
-    console.log('Выполняем действие:', pendingAction.value.id)
-    // TODO: реализовать выполнение действия
+  if (pendingAction.value && pendingAction.value.target) {
+    console.log('Выполняем действие:', pendingAction.value.id, 'цель:', pendingAction.value.target)
+    
+    if (pendingAction.value.id === 'move' && pendingAction.value.target.type === 'hex') {
+      // Перемещаем персонажа игрока
+      movePlayerCharacter(pendingAction.value.target.hex)
+    } else if (pendingAction.value.id === 'attack' && pendingAction.value.target.characterId) {
+      // Атакуем цель
+      attackTarget(pendingAction.value.target)
+    }
+    
     pendingAction.value = null
+  }
+}
+
+const movePlayerCharacter = (targetHex) => {
+  const character = playerCharacter.value
+  if (!character) {
+    console.warn('Персонаж игрока не найден')
+    return
+  }
+  
+  console.log(`Перемещаем персонажа ${character.name} на гекс q:${targetHex.q}, r:${targetHex.r}`)
+  
+  // Получаем ID активной карты
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) {
+    console.warn('Нет активной карты для перемещения')
+    return
+  }
+  
+  console.log('Активная карта:', mapId)
+  
+  const moved = battleMapStore.moveTokenByCharacterId(mapId, character.id, targetHex.q, targetHex.r)
+  
+  if (!moved) {
+    // Если токен не найден, размещаем его впервые
+    console.log('Токен не найден на карте, размещаем впервые')
+    const placed = battleMapStore.placeToken(mapId, character.id, targetHex.q, targetHex.r)
+    if (placed) {
+      console.log('Токен успешно размещен на карте')
+    } else {
+      console.warn('Не удалось разместить токен на карте. Возможно гекс занят.')
+    }
+  } else {
+    console.log('Токен перемещен на существующей карте')
+  }
+  
+  // Также обновляем позицию в charactersStore для синхронизации
+  if (!character.combat?.position) {
+    charactersStore.placeOnMap(character.id, mapId, targetHex.q, targetHex.r)
+  } else {
+    charactersStore.moveOnMap(character.id, targetHex.q, targetHex.r)
+  }
+  
+  // Если есть сессия, отправляем обновление мастеру
+  const isConnectedToMaster = session.role === 'player' && session.status === 'in-room'
+  console.log('Проверка сессии для отправки:', { 
+    role: session.role, 
+    status: session.status,
+    isConnectedToMaster 
+  })
+  if (isConnectedToMaster) {
+    console.log('Отправляем перемещение мастеру...')
+    session.broadcastCharacterMove(character.id, targetHex.q, targetHex.r)
+  }
+}
+
+const attackTarget = (target) => {
+  console.log('Атакуем цель:', target.characterId)
+  // TODO: реализовать логику атаки
+}
+
+const handleActionTargetSelected = (target) => {
+  if (pendingAction.value) {
+    pendingAction.value.target = target
+    pendingAction.value.canConfirm = true
+    
+    // Обновляем описание с информацией о цели
+    if (target.type === 'hex') {
+      pendingAction.value.description = `Переместиться на гекс (${target.hex.q}, ${target.hex.r})`
+    } else if (target.characterId) {
+      pendingAction.value.description = `Цель: ${target.character?.name || 'Неизвестный'}`
+    }
   }
 }
 
@@ -153,6 +259,70 @@ const getActionDescription = (actionId) => {
     help: 'Показать справку'
   }
   return descriptions[actionId] || 'Выберите действие'
+}
+
+// Обработчики событий карты для мобильного интерфейса
+const handleTokenSelected = (token) => {
+  selectedToken.value = token
+  // При выборе токена сбрасываем выбранный гекс
+  if (token) {
+    selectedHex.value = null
+  }
+}
+
+const handleHexSelected = (hex) => {
+  selectedHex.value = hex
+  // При выборе гекса сбрасываем токен только если это пустой гекс
+  // selectedToken остаётся если кликнули на гекс с токеном
+}
+
+// Обработчик смены снаряжения
+const handleSwitchEquipment = () => {
+  // TODO: открыть модалку смены снаряжения
+  console.log('Смена снаряжения')
+}
+
+// Открыть лист конкретного персонажа
+const handleOpenCharacterSheet = (characterId) => {
+  if (characterId) {
+    // Устанавливаем активного персонажа перед открытием листа
+    charactersStore.setActiveCharacter(characterId)
+  }
+  setView('character-sheet')
+}
+
+// Обработчики реакций
+const handleReactionAccept = (reactionId) => {
+  console.log('Игрок принял реакцию:', reactionId)
+  // Отправляем ответ мастеру
+  if (session.status === 'in-room') {
+    session.sendReactionResponse(reactionId, true)
+  }
+  reactionPrompt.value = null
+}
+
+const handleReactionDecline = (reactionId) => {
+  console.log('Игрок отклонил реакцию:', reactionId)
+  // Отправляем ответ мастеру
+  if (session.status === 'in-room') {
+    session.sendReactionResponse(reactionId, false)
+  }
+  reactionPrompt.value = null
+}
+
+// Слушатель сообщений от мастера о реакциях
+const setupReactionListener = () => {
+  // Это будет вызвано когда сессия установлена
+  session.onMessage('reaction-prompt', (payload) => {
+    console.log('Получено предложение реакции:', payload)
+    reactionPrompt.value = {
+      id: payload.id,
+      title: payload.title || 'Реакция!',
+      description: payload.description || 'Можете использовать реакцию',
+      timeoutSeconds: payload.timeoutSeconds || 5,
+      startedAt: Date.now()
+    }
+  })
 }
 </script>
 
@@ -183,22 +353,31 @@ const getActionDescription = (actionId) => {
     
     <!-- Mobile Interface -->
     <template v-else-if="isMobile">
+      <!-- Верхняя панель мобильного интерфейса с инфокарточкой -->
       <MobilePlayerInterface
         :character="playerCharacter"
+        :selected-token="selectedToken"
+        :selected-hex="selectedHex"
+        :player-facing="playerFacing"
         :active-view="activeView"
         :connection-status="status"
         :current-turn="currentTurn"
         :is-player-turn="isPlayerTurn"
         :pending-action="pendingAction"
+        :reaction-prompt="reactionPrompt"
         @set-view="setView"
         @leave-room="leaveRoom"
         @select-action="handleSelectAction"
         @confirm-action="handleConfirmAction"
         @cancel-action="handleCancelAction"
+        @switch-equipment="handleSwitchEquipment"
+        @reaction-accept="handleReactionAccept"
+        @reaction-decline="handleReactionDecline"
+        @open-character-sheet="handleOpenCharacterSheet"
       />
       
-      <!-- Content для мобильного интерфейса -->
-      <main class="flex-1 overflow-hidden">
+      <!-- Content для мобильного интерфейса - расположен между header и bottom panel -->
+      <main class="flex-1 overflow-auto bg-slate-950" style="padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px))">
         <ChatPanel v-show="activeView === 'chat'" />
         <CharacterSheet v-show="activeView === 'character-sheet'" />
         <BattleMap 
@@ -206,7 +385,9 @@ const getActionDescription = (actionId) => {
           :readonly="!isPlayerTurn"
           :mobile-mode="true"
           :pending-action="pendingAction"
-          @action-target-selected="pendingAction && (pendingAction.canConfirm = true)"
+          @action-target-selected="handleActionTargetSelected"
+          @token-selected="handleTokenSelected"
+          @hex-selected="handleHexSelected"
         />
       </main>
     </template>

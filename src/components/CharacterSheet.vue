@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import UserAvatar from './UserAvatar.vue'
 import CharacterWizard from './CharacterWizard.vue'
@@ -15,7 +15,15 @@ const { showCharacterWizard, currentView } = storeToRefs(userStore)
 const { myCharacters, activeCharacter, activeCharacterId } = storeToRefs(charactersStore)
 
 // Режим отображения: 'cards' или 'detailed'
-const viewMode = ref('cards')
+// Автоматически переключаем на detailed если есть активный персонаж
+const viewMode = ref(activeCharacter.value ? 'detailed' : 'cards')
+
+// Когда меняется активный персонаж - переключаемся на detailed
+watch(activeCharacterId, (newId) => {
+  if (newId) {
+    viewMode.value = 'detailed'
+  }
+})
 
 const hasCharacter = computed(() => Boolean(activeCharacter.value))
 const hasCharacters = computed(() => myCharacters.value.length > 0)

@@ -50,7 +50,10 @@ export const useSessionStore = defineStore('session', {
     
     // Сплеш-сообщения (очередь для отображения)
     splashQueue: [],
-    currentSplash: null
+    currentSplash: null,
+    
+    // Обработчики сообщений (для внешней регистрации слушателей)
+    messageHandlers: {}
   }),
   persist: {
     key: 'trip-session-v1',
@@ -142,6 +145,79 @@ export const useSessionStore = defineStore('session', {
     }
   },
   actions: {
+    // Регистрация обработчика сообщений определённого типа
+    onMessage(messageType, handler) {
+      if (!this.messageHandlers[messageType]) {
+        this.messageHandlers[messageType] = []
+      }
+      this.messageHandlers[messageType].push(handler)
+      
+      // Возвращаем функцию отписки
+      return () => {
+        const handlers = this.messageHandlers[messageType]
+        if (handlers) {
+          const idx = handlers.indexOf(handler)
+          if (idx !== -1) handlers.splice(idx, 1)
+        }
+      }
+    },
+    
+    // Вызов всех зарегистрированных обработчиков для типа сообщения
+    triggerMessageHandlers(messageType, payload) {
+      const handlers = this.messageHandlers[messageType]
+      if (handlers && handlers.length > 0) {
+        handlers.forEach(handler => {
+          try {
+            handler(payload)
+          } catch (err) {
+            console.error(`Error in message handler for ${messageType}:`, err)
+          }
+        })
+      }
+    },
+    
+    // Отправка ответа на реакцию мастеру (для игрока)
+    sendReactionResponse(reactionId, accepted) {
+      if (!this.activeConnection?.open) {
+        console.warn('Нет активного соединения для отправки ответа на реакцию')
+        return
+      }
+      
+      const userStore = useUserStore()
+      const payload = {
+        id: createId(),
+        type: 'reaction-response',
+        reactionId,
+        accepted,
+        userId: userStore.userId,
+        time: Date.now()
+      }
+      
+      this.activeConnection.send(payload)
+      console.log('Отправлен ответ на реакцию:', payload)
+    },
+    
+    // Отправка предложения реакции игроку (для мастера)
+    sendReactionPrompt(connectionOrPeerId, reactionData) {
+      const payload = {
+        id: createId(),
+        type: 'reaction-prompt',
+        ...reactionData,
+        time: Date.now()
+      }
+      
+      // Если передан peerId - ищем соединение
+      if (typeof connectionOrPeerId === 'string') {
+        const entry = this.connections.find(c => c.peerId === connectionOrPeerId)
+        if (entry?.conn?.open) {
+          entry.conn.send(payload)
+          console.log('Отправлено предложение реакции игроку:', entry.alias)
+        }
+      } else if (connectionOrPeerId?.open) {
+        connectionOrPeerId.send(payload)
+      }
+    },
+    
     clearReconnectTimer() {
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer)
@@ -340,19 +416,28 @@ export const useSessionStore = defineStore('session', {
           }
         })
         
-        // Отправляем игроку текущую карту (с небольшой задержкой для стабильности)
+        // Отправляем игроку текущую карту и персонажей (с небольшой задержкой для стабильности)
         setTimeout(() => {
           this.sendMapToConnection(conn)
+          this.sendCharactersToConnection(conn)
         }, 100)
       })
       
       conn.on('data', (payload) => {
+        console.log('[Session Master] Received from player:', payload.type, payload.action || '')
         // Обработка по типу сообщения
         if (payload.type === 'profile-update') {
           this.handleProfileUpdate(payload)
           this.broadcastPayload(payload, conn.peer)
         } else if (payload.type === 'character-sync') {
           this.handleCharacterSync(payload)
+        } else if (payload.type === 'character-action') {
+          // Обработка действий игрока (перемещение, атака и т.д.)
+          this.handleCharacterAction(payload, conn)
+        } else if (payload.type === 'reaction-response') {
+          // Ответ игрока на предложение реакции
+          console.log('Получен ответ на реакцию от игрока:', payload)
+          this.triggerMessageHandlers('reaction-response', { ...payload, playerPeerId: conn.peer })
         } else if (payload.type === 'chat') {
           this.addMessage(payload)
           this.broadcastPayload(payload, conn.peer)
@@ -475,6 +560,12 @@ export const useSessionStore = defineStore('session', {
           this.handleCharacterSync(payload)
         } else if (payload.type === 'splash') {
           this.handleSplash(payload)
+        } else if (payload.type === 'action-error') {
+          // Ошибка действия от мастера
+          this.handleActionError(payload)
+        } else if (payload.type === 'reaction-prompt') {
+          // Предложение реакции от мастера
+          this.triggerMessageHandlers('reaction-prompt', payload)
         } else if (payload.type === 'chat') {
           if (!this.masterProfile && payload.userId) {
             this.masterProfile = {
@@ -630,6 +721,45 @@ export const useSessionStore = defineStore('session', {
     },
     
     /**
+     * Отправить всех персонажей одному подключению
+     */
+    sendCharactersToConnection(conn) {
+      if (!conn?.open) {
+        console.warn('[Session] sendCharactersToConnection: connection not open')
+        return
+      }
+      
+      const charactersStore = useCharactersStore()
+      
+      // Собираем персонажей для отправки
+      const charactersForPlayer = charactersStore.characters
+        .filter(c => !c.isNpc || c.visibleToPlayers)
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          portrait: c.portrait,
+          ownerId: c.ownerId,
+          ownerNickname: c.ownerNickname,
+          isNpc: c.isNpc,
+          npcType: c.npcType,
+          combat: c.combat,
+          stats: c.stats,
+          class: c.class,
+          race: c.race,
+          gender: c.gender
+        }))
+      
+      console.log('[Session] Sending characters to player:', charactersForPlayer.length)
+      conn.send({
+        id: createId(),
+        type: 'character-sync',
+        action: 'all-characters',
+        characters: charactersForPlayer,
+        time: Date.now()
+      })
+    },
+    
+    /**
      * Отправить текущую карту всем игрокам
      */
     broadcastMap() {
@@ -691,6 +821,76 @@ export const useSessionStore = defineStore('session', {
       }
       
       this.broadcastPayload(payload)
+    },
+    
+    /**
+     * Отправить всех персонажей игрокам (для синхронизации)
+     * Включает персонажей других игроков и видимых NPC мастера
+     */
+    broadcastAllCharacters() {
+      if (this.role !== 'master') return
+      
+      const charactersStore = useCharactersStore()
+      
+      // Собираем всех персонажей для отправки игрокам
+      // Персонажи игроков - всегда видны, NPC - только если visibleToPlayers = true
+      const charactersForPlayers = charactersStore.characters
+        .filter(c => !c.isNpc || c.visibleToPlayers)
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          portrait: c.portrait,
+          ownerId: c.ownerId,
+          ownerNickname: c.ownerNickname,
+          isNpc: c.isNpc,
+          npcType: c.npcType,
+          combat: c.combat,
+          stats: c.stats,
+          class: c.class,
+          race: c.race,
+          gender: c.gender
+        }))
+      
+      const payload = {
+        id: createId(),
+        type: 'character-sync',
+        action: 'all-characters',
+        characters: charactersForPlayers,
+        time: Date.now()
+      }
+      
+      console.log('[Session] Broadcasting all characters to players:', charactersForPlayers.length)
+      this.broadcastPayload(payload)
+    },
+
+    /**
+     * Игрок запрашивает перемещение своего персонажа
+     */
+    broadcastCharacterMove(characterId, q, r) {
+      if (this.role !== 'player') {
+        console.warn('[Session] broadcastCharacterMove: not a player')
+        return
+      }
+      
+      if (!this.activeConnection?.open) {
+        console.warn('[Session] broadcastCharacterMove: no active connection to master')
+        return
+      }
+      
+      const userStore = useUserStore()
+      const payload = {
+        id: createId(),
+        type: 'character-action',
+        action: 'move',
+        characterId,
+        q,
+        r,
+        userId: userStore.userId,
+        time: Date.now()
+      }
+      
+      console.log('[Session] Sending character move to master:', payload)
+      this.activeConnection.send(payload)
     },
     
     /**
@@ -902,6 +1102,18 @@ export const useSessionStore = defineStore('session', {
         if (payload.action === 'your-character-update' && payload.character) {
           console.log('[Session] Received character update from master')
           charactersStore.applyReceivedCharacter(payload.character)
+        } else if (payload.action === 'all-characters' && payload.characters) {
+          // Получаем всех персонажей от мастера (другие игроки и видимые NPC)
+          console.log('[Session] Received all characters from master:', payload.characters.length)
+          const userStore = useUserStore()
+          
+          // Применяем персонажей других игроков и NPC
+          payload.characters.forEach(char => {
+            // Не перезаписываем своих персонажей
+            if (char.ownerId !== userStore.userId) {
+              charactersStore.applyReceivedCharacter(char)
+            }
+          })
         } else if (payload.action === 'tokens' && payload.tokens) {
           // Обновляем информацию о токенах других игроков
           charactersStore.updateOtherTokens(payload.tokens.filter(t => 
@@ -911,6 +1123,86 @@ export const useSessionStore = defineStore('session', {
       }
     },
     
+    /**
+     * Обработка действий персонажа от игрока (на стороне мастера)
+     */
+    handleCharacterAction(payload, conn) {
+      if (this.role !== 'master') return
+      
+      console.log('[Session] handleCharacterAction:', payload.action, payload)
+      
+      const battleMapStore = useBattleMapStore()
+      const charactersStore = useCharactersStore()
+      
+      if (payload.action === 'move' && payload.characterId && payload.q !== undefined && payload.r !== undefined) {
+        // Проверяем, что персонаж принадлежит этому игроку
+        const character = charactersStore.characters.find(c => c.id === payload.characterId)
+        if (!character) {
+          console.warn('[Session] Character not found:', payload.characterId)
+          this.sendActionError(conn, 'Персонаж не найден')
+          return
+        }
+        
+        // Проверяем, что игрок владеет этим персонажем
+        const isOwner = character.ownerId === payload.userId
+        if (!isOwner) {
+          console.warn('[Session] Player tried to move character they don\'t own')
+          this.sendActionError(conn, 'Вы не можете управлять этим персонажем')
+          // Отправляем актуальную карту для отката изменений
+          this.sendMapToConnection(conn)
+          return
+        }
+        
+        // Перемещаем токен на карте
+        const mapId = battleMapStore.activeMapId
+        if (!mapId) {
+          this.sendActionError(conn, 'Нет активной карты')
+          return
+        }
+        
+        // Проверяем, что целевая клетка свободна
+        const targetOccupied = battleMapStore.getTokenAt(mapId, payload.q, payload.r)
+        if (targetOccupied && targetOccupied.characterId !== payload.characterId) {
+          this.sendActionError(conn, 'Эта клетка занята')
+          this.sendMapToConnection(conn)
+          return
+        }
+        
+        const moved = battleMapStore.moveTokenByCharacterId(mapId, payload.characterId, payload.q, payload.r)
+        if (!moved) {
+          // Если токен не найден, размещаем впервые
+          battleMapStore.placeToken(mapId, payload.characterId, payload.q, payload.r)
+        }
+        
+        // Обновляем позицию в charactersStore
+        if (!character.combat?.position) {
+          charactersStore.placeOnMap(payload.characterId, mapId, payload.q, payload.r)
+        } else {
+          charactersStore.moveOnMap(payload.characterId, payload.q, payload.r)
+        }
+        
+        console.log('[Session] Token moved by player:', payload.characterId, 'to', payload.q, payload.r)
+        
+        // Отправляем обновление карты и персонажей всем игрокам
+        this.broadcastMap()
+        this.broadcastAllCharacters()
+      }
+    },
+    
+    /**
+     * Отправить сообщение об ошибке действия игроку
+     */
+    sendActionError(conn, message) {
+      if (!conn?.open) return
+      
+      conn.send({
+        id: createId(),
+        type: 'action-error',
+        message,
+        time: Date.now()
+      })
+    },
+
     // ============= СПЛЕШ-СООБЩЕНИЯ И АССЕТЫ =============
     
     /**
@@ -1036,6 +1328,29 @@ export const useSessionStore = defineStore('session', {
     },
     
     // ============= ОБРАБОТКА СПЛЕШ-СООБЩЕНИЙ =============
+    
+    /**
+     * Обработка ошибки действия от мастера
+     */
+    handleActionError(payload) {
+      console.warn('[Session] Action error from master:', payload.message)
+      
+      // Показываем ошибку как системное сообщение
+      this.addMessage(systemMessage(`⚠️ ${payload.message}`))
+      
+      // Также можно показать как splash-уведомление
+      this.splashQueue.push({
+        id: payload.id,
+        splashType: 'notification',
+        content: payload.message,
+        duration: 2000,
+        style: { color: '#ff6b6b' }
+      })
+      
+      if (!this.currentSplash) {
+        this.showNextSplash()
+      }
+    },
     
     /**
      * Обработка входящего сплеш-сообщения

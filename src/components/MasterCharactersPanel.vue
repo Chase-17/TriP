@@ -86,8 +86,8 @@ const isPlayerOnline = (ownerId) => {
 // Синхронизировать персонажа с игроком
 const syncCharacterToPlayer = (charId) => {
   const char = charactersStore.characters.find(c => c.id === charId)
-  if (char?.ownerId) {
-    // Отправляем сплеш с эффектом изменения здоровья
+  if (char?.ownerId && !char.isNpc) {
+    // Отправляем сплеш с эффектом изменения здоровья только владельцу персонажа игрока
     const delta = healthDeltas.value.get(charId)
     if (delta) {
       if (char.combat?.healthType === 'simple') {

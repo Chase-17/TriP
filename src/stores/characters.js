@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { calculateMaxHP, calculateWoundSlots } from '@/utils/wounds'
+import { useUserStore } from '@/stores/user'
 
 /**
  * Генератор уникальных ID
@@ -91,7 +92,11 @@ const createEmptyCharacter = (ownerId, options = {}) => ({
   
   // Для NPC мастера
   isNpc: options.isNpc || false,
-  npcType: options.npcType || null  // 'friendly', 'hostile', 'neutral'
+  npcType: options.npcType || null,  // 'friendly', 'hostile', 'neutral'
+  
+  // Видимость для игроков (только для NPC мастера)
+  // true = виден на карте для игроков, false = скрыт
+  visibleToPlayers: options.visibleToPlayers !== undefined ? options.visibleToPlayers : true
 })
 
 /**
@@ -126,10 +131,12 @@ export const useCharactersStore = defineStore('characters', {
   
   getters: {
     /**
-     * Все персонажи текущего пользователя
+     * Все персонажи текущего пользователя (только свои, не NPC)
      */
     myCharacters: (state) => {
-      return state.characters.filter(c => !c.isNpc)
+      const userStore = useUserStore()
+      const userId = userStore.userId
+      return state.characters.filter(c => c.ownerId === userId && !c.isNpc)
     },
     
     /**
@@ -265,6 +272,30 @@ export const useCharactersStore = defineStore('characters', {
         if (this.activeCharacterId === characterId) {
           this.activeCharacterId = this.characters[0]?.id || null
         }
+      }
+    },
+    
+    /**
+     * Переключить видимость NPC для игроков
+     */
+    toggleNpcVisibility(characterId) {
+      const character = this.characters.find(c => c.id === characterId)
+      if (character && character.isNpc) {
+        character.visibleToPlayers = !character.visibleToPlayers
+        character.updatedAt = Date.now()
+        return character.visibleToPlayers
+      }
+      return null
+    },
+    
+    /**
+     * Установить видимость NPC для игроков
+     */
+    setNpcVisibility(characterId, visible) {
+      const character = this.characters.find(c => c.id === characterId)
+      if (character && character.isNpc) {
+        character.visibleToPlayers = visible
+        character.updatedAt = Date.now()
       }
     },
     

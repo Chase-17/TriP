@@ -572,6 +572,57 @@ export const drawFacingIndicator = (ctx, cx, cy, radius, rotation = 0) => {
 }
 
 /**
+ * Нарисовать оверлей токена (подложка + защита) - рисуется ПОВЕРХ всех токенов
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Object} token - данные токена
+ * @param {Object} options - опции отрисовки
+ */
+export const drawTokenOverlay = (ctx, token, options = {}) => {
+  const {
+    tokenSize = 48,
+    isHovered = false,
+    isSelected = false,
+    canSeeDefence = false
+  } = options
+  
+  const { character, pixelX, pixelY, facing = 0, meleeDefence, rangedDefence } = token
+  if (!character) return
+  
+  const cx = pixelX
+  const cy = pixelY
+  const portraitRadius = tokenSize / 2
+  const rotation = facing * 60
+  
+  const shouldShowDefenceUI = (isHovered || isSelected) && canSeeDefence && (meleeDefence || rangedDefence)
+  
+  if (shouldShowDefenceUI) {
+    // Получаем данные для ран
+    const wounds = character.combat?.wounds
+    const woundSlots = character.woundSlots || 
+      (character.stats ? calculateWoundSlots(character.stats, character.combat?.bonusDeadlySlots || 0) : null)
+    
+    // 1. Рисуем тёмную подложку (заполненный круг)
+    drawTokenHoverUI(ctx, cx, cy, portraitRadius, rotation, isSelected, isHovered)
+    
+    // 2. Рисуем защиту
+    drawDefence(ctx, cx, cy, portraitRadius, meleeDefence, rangedDefence, rotation, { bothSides: true })
+    
+    // 3. Перерисовываем портрет поверх подложки
+    drawPortrait(ctx, cx, cy, portraitRadius, character.portrait, character.name, wounds, woundSlots)
+    
+    // 4. Перерисовываем царапины и раны поверх
+    if (wounds && woundSlots) {
+      drawScratches(ctx, cx, cy, portraitRadius, wounds, woundSlots)
+      drawLightWounds(ctx, cx, cy, portraitRadius, wounds, woundSlots)
+    }
+    
+    // 5. Перерисовываем индикатор направления поверх
+    const indicatorRadius = portraitRadius + 28
+    drawFacingIndicator(ctx, cx, cy, indicatorRadius, rotation)
+  }
+}
+
+/**
  * Нарисовать один токен полностью
  * @param {CanvasRenderingContext2D} ctx
  * @param {Object} token - данные токена { character, pixelX, pixelY, facing, meleeDefence, rangedDefence }
@@ -706,18 +757,21 @@ export const drawTokens = (ctx, tokens, options = {}) => {
     draggingTokenId = null
   } = options
   
-  for (const token of tokens) {
+  // Собираем информацию о токенах с их состояниями
+  const tokenStates = tokens.map(token => {
     const isHovered = token.id === hoveredTokenId || token.characterId === hoveredTokenId
     const isSelected = token.id === selectedTokenId || token.characterId === selectedTokenId
     const isDragging = token.id === draggingTokenId || token.characterId === draggingTokenId
     
-    // Определяем, может ли текущий игрок видеть защиту этого токена
-    // Мастер видит всё, игрок видит свой токен или если токен разрешает показ
     const isOwner = token.character?.ownerId === currentUserId
     const showDefenceToOthers = token.character?.combat?.showDefenceToOthers || false
     const canSeeDefence = isMaster || isOwner || showDefenceToOthers
     
-    // Полупрозрачность для перетаскиваемого токена
+    return { token, isHovered, isSelected, isDragging, canSeeDefence }
+  })
+  
+  // ПЕРВЫЙ ПРОХОД: Рисуем все токены БЕЗ UI hover/defence
+  for (const { token, isHovered, isSelected, isDragging, canSeeDefence } of tokenStates) {
     if (isDragging) {
       ctx.save()
       ctx.globalAlpha = 0.7
@@ -725,14 +779,34 @@ export const drawTokens = (ctx, tokens, options = {}) => {
     
     drawToken(ctx, token, {
       ...options,
-      isHovered,
-      isSelected,
+      isHovered: false, // Не рисуем UI в первом проходе
+      isSelected: false,
       canSeeDefence
     })
     
     if (isDragging) {
       ctx.restore()
     }
+  }
+  
+  // ВТОРОЙ ПРОХОД: Рисуем UI hover/defence поверх всех токенов
+  // Сначала selected, потом hovered (чтобы hovered был сверху)
+  const interactiveTokens = tokenStates.filter(ts => ts.isHovered || ts.isSelected)
+  
+  // Сортируем: сначала selected, потом hovered (hovered рисуется последним = сверху)
+  interactiveTokens.sort((a, b) => {
+    if (a.isHovered && !b.isHovered) return 1  // hovered идёт последним
+    if (!a.isHovered && b.isHovered) return -1
+    return 0
+  })
+  
+  for (const { token, isHovered, isSelected, canSeeDefence } of interactiveTokens) {
+    drawTokenOverlay(ctx, token, {
+      ...options,
+      isHovered,
+      isSelected,
+      canSeeDefence
+    })
   }
 }
 

@@ -686,6 +686,21 @@ export const useBattleMapStore = defineStore('battleMap', {
     },
     
     /**
+     * Получить токен на указанной позиции
+     * @returns {{characterId, facing} | null}
+     */
+    getTokenAt(mapId, q, r) {
+      const map = this.maps.find(m => m.id === mapId)
+      if (!map) return null
+      
+      const tokensLayer = map.layers.find(l => l.type === LAYER_TYPES.TOKENS)
+      if (!tokensLayer) return null
+      
+      const key = `${q},${r}`
+      return tokensLayer.data.get(key) || null
+    },
+    
+    /**
      * Найти позицию токена персонажа
      * @returns {{q, r, facing} | null}
      */

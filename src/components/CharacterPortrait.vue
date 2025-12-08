@@ -15,9 +15,9 @@ import { presetUrl } from '@/utils/assets'
 import diffsData from '@/data/diffs.json'
 
 const props = defineProps({
-  // Изображение портрета
+  // Изображение портрета (строка или число)
   portrait: {
-    type: String,
+    type: [String, Number],
     default: null
   },
   // Имя персонажа (для fallback)

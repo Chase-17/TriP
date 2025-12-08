@@ -36,7 +36,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['action-target-selected'])
+const emit = defineEmits(['action-target-selected', 'token-selected', 'hex-selected'])
 
 const battleMapStore = useBattleMapStore()
 const terrainStore = useTerrainStore()
@@ -742,63 +742,7 @@ const onCanvasMouseMove = (event) => {
 }
 
 // Touch события для мобильных устройств
-const lastTouchTime = ref(0)
-const touchStart = ref({ x: 0, y: 0 })
 
-const onCanvasTouchStart = (event) => {
-  if (event.touches.length === 1) {
-    const touch = event.touches[0]
-    touchStart.value = { x: touch.clientX, y: touch.clientY }
-    
-    // Обрабатываем как mouse down для совместимости
-    const mouseEvent = {
-      button: 0,
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      target: event.target,
-      preventDefault: () => event.preventDefault()
-    }
-    onCanvasMouseDown(mouseEvent)
-  } else if (event.touches.length === 2) {
-    // Двухпальцевый жест для zoom/pan - пока что заблокируем
-    event.preventDefault()
-  }
-}
-
-const onCanvasTouchMove = (event) => {
-  if (event.touches.length === 1) {
-    const touch = event.touches[0]
-    
-    // Обрабатываем как mouse move для совместимости  
-    const mouseEvent = {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      target: event.target
-    }
-    onCanvasMouseMove(mouseEvent)
-  }
-  event.preventDefault()
-}
-
-const onCanvasTouchEnd = (event) => {
-  const now = Date.now()
-  const timeDiff = now - lastTouchTime.value
-  lastTouchTime.value = now
-  
-  // Обрабатываем как mouse up для совместимости
-  if (event.changedTouches.length === 1) {
-    const touch = event.changedTouches[0]
-    const mouseEvent = {
-      button: 0,
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      target: event.target
-    }
-    onCanvasMouseUp(mouseEvent)
-  }
-  
-  event.preventDefault()
-}
 
 const onCanvasMouseDown = (event) => {
   // Закрываем открытые dropdown при клике на canvas
@@ -819,6 +763,7 @@ const onCanvasMouseDown = (event) => {
     isDraggingToken.value = true
     draggingToken.value = hoveredToken.value
     selectedToken.value = hoveredToken.value
+    emit('token-selected', hoveredToken.value)
     
     // Вычисляем смещение курсора от центра токена
     const rect = event.target.getBoundingClientRect()
@@ -846,8 +791,10 @@ const onCanvasMouseDown = (event) => {
     if (selectedToken.value?.characterId === hoveredToken.value.characterId) {
       // Повторный клик - снимаем выделение
       selectedToken.value = null
+      emit('token-selected', null)
     } else {
       selectedToken.value = hoveredToken.value
+      emit('token-selected', hoveredToken.value)
     }
     renderUI()
     return
@@ -861,9 +808,15 @@ const onCanvasMouseDown = (event) => {
       return
     }
     
+    // Сообщаем о выбранном гексе (для мобильной инфокарточки)
+    if (hoveredHex.value) {
+      emit('hex-selected', hoveredHex.value)
+    }
+    
     // Снимаем выделение токена
     if (selectedToken.value) {
       selectedToken.value = null
+      emit('token-selected', null)
       renderUI()
     }
   }
@@ -1126,6 +1079,230 @@ const deleteSelection = () => {
   renderGrid()
 }
 
+// ===== TOUCH ОБРАБОТЧИКИ =====
+
+// Touch состояние
+const touchState = ref({
+  touches: [],
+  lastTap: null,
+  isMultiTouch: false,
+  isPanning: false,
+  initialDistance: 0,
+  initialZoom: 1
+})
+
+const onCanvasTouchStart = (event) => {
+  event.preventDefault()
+  const touches = Array.from(event.touches)
+  touchState.value.touches = touches
+  touchState.value.isMultiTouch = touches.length > 1
+
+  if (touches.length === 1) {
+    // Один палец - подготовка к пану или тапу
+    const touch = touches[0]
+    touchState.value.lastTap = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    }
+    touchState.value.isPanning = false
+  } else if (touches.length === 2) {
+    // Два пальца - начало щипка для зума
+    const touch1 = touches[0]
+    const touch2 = touches[1]
+    const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+    
+    touchState.value.initialDistance = distance
+    touchState.value.initialZoom = camera.value.zoom
+    touchState.value.isPanning = false
+  }
+}
+
+const onCanvasTouchMove = (event) => {
+  event.preventDefault()
+  const touches = Array.from(event.touches)
+  touchState.value.touches = touches
+
+  if (touches.length === 1 && !touchState.value.isMultiTouch) {
+    // Один палец - пан
+    const touch = touches[0]
+    if (touchState.value.lastTap && !touchState.value.isPanning) {
+      const dx = touch.clientX - touchState.value.lastTap.x
+      const dy = touch.clientY - touchState.value.lastTap.y
+      const distance = Math.hypot(dx, dy)
+      
+      // Начинаем пан если палец сдвинулся больше чем на 10px
+      if (distance > 10) {
+        touchState.value.isPanning = true
+      }
+    }
+    
+    if (touchState.value.isPanning && touchState.value.lastTap) {
+      const dx = touch.clientX - touchState.value.lastTap.x
+      const dy = touch.clientY - touchState.value.lastTap.y
+      
+      battleMapStore.$patch({
+        camera: {
+          x: camera.value.x + dx,
+          y: camera.value.y + dy,
+          zoom: camera.value.zoom
+        }
+      })
+      
+      touchState.value.lastTap = { x: touch.clientX, y: touch.clientY, time: Date.now() }
+      renderAll()
+    }
+  } else if (touches.length === 2) {
+    // Два пальца - зум щипком
+    const touch1 = touches[0]
+    const touch2 = touches[1]
+    const currentDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+    
+    if (touchState.value.initialDistance > 0) {
+      const zoomFactor = currentDistance / touchState.value.initialDistance
+      const newZoom = Math.max(0.25, Math.min(4, touchState.value.initialZoom * zoomFactor))
+      
+      // Центр щипка
+      const centerX = (touch1.clientX + touch2.clientX) / 2
+      const centerY = (touch1.clientY + touch2.clientY) / 2
+      
+      const rect = uiCanvas.value.getBoundingClientRect()
+      const canvasX = centerX - rect.left
+      const canvasY = centerY - rect.top
+      
+      // Зум относительно центра щипка
+      const worldX = (canvasX - camera.value.x) / camera.value.zoom
+      const worldY = (canvasY - camera.value.y) / camera.value.zoom
+      
+      battleMapStore.$patch({
+        camera: {
+          x: canvasX - worldX * newZoom,
+          y: canvasY - worldY * newZoom,
+          zoom: newZoom
+        }
+      })
+      
+      renderAll()
+    }
+  }
+  
+  // Обновляем hover для одного пальца
+  if (touches.length === 1 && !touchState.value.isPanning) {
+    const touch = touches[0]
+    const rect = event.target.getBoundingClientRect()
+    const canvasX = touch.clientX - rect.left
+    const canvasY = touch.clientY - rect.top
+    const worldPos = canvasToWorld(canvasX, canvasY, camera.value)
+    
+    // Обновляем hoveredHex
+    if (hexGrid.value) {
+      const hex = hexGrid.value.pixelToHex(worldPos.x, worldPos.y)
+      hoveredHex.value = hex
+    }
+    
+    // Обновляем hoveredToken
+    const tokenUnderFinger = findTokenAtPoint(worldPos.x, worldPos.y, mapTokens.value, tokenSize.value)
+    if (tokenUnderFinger !== hoveredToken.value) {
+      hoveredToken.value = tokenUnderFinger
+    }
+    
+    renderUI()
+  }
+}
+
+const onCanvasTouchEnd = (event) => {
+  event.preventDefault()
+  const touches = Array.from(event.touches)
+  touchState.value.touches = touches
+
+  // Если остались касания, обновляем состояние
+  if (touches.length > 0) {
+    touchState.value.isMultiTouch = touches.length > 1
+    return
+  }
+
+  // Все пальцы убраны - проверяем тап
+  if (!touchState.value.isPanning && touchState.value.lastTap) {
+    const timeDiff = Date.now() - touchState.value.lastTap.time
+    
+    // Если время меньше 300ms - это тап
+    if (timeDiff < 300) {
+      const rect = event.target.getBoundingClientRect()
+      const canvasX = touchState.value.lastTap.x - rect.left
+      const canvasY = touchState.value.lastTap.y - rect.top
+      const worldPos = canvasToWorld(canvasX, canvasY, camera.value)
+      
+      // Находим что под пальцем
+      let hex = null
+      if (hexGrid.value) {
+        hex = hexGrid.value.pixelToHex(worldPos.x, worldPos.y)
+        hoveredHex.value = hex
+      }
+      
+      const tokenUnderFinger = findTokenAtPoint(worldPos.x, worldPos.y, mapTokens.value, tokenSize.value)
+      hoveredToken.value = tokenUnderFinger
+      
+      // Обрабатываем тап как клик
+      handleTouchTap(tokenUnderFinger, hex)
+    }
+  }
+
+  // Сбрасываем touch состояние
+  touchState.value.touches = []
+  touchState.value.lastTap = null
+  touchState.value.isMultiTouch = false
+  touchState.value.isPanning = false
+  touchState.value.initialDistance = 0
+  touchState.value.initialZoom = 1
+  
+  renderUI()
+}
+
+const handleTouchTap = (token, hex) => {
+  // Логика обработки тапа такая же как в onCanvasMouseDown
+  
+  // Тап по токену
+  if (token) {
+    // В мобильном режиме с активным действием - выбираем цель
+    if (props.mobileMode && props.pendingAction && (props.pendingAction.id === 'attack' || props.pendingAction.id === 'skill')) {
+      emit('action-target-selected', token)
+      return
+    }
+    
+    if (selectedToken.value?.characterId === token.characterId) {
+      // Повторный тап - снимаем выделение
+      selectedToken.value = null
+      emit('token-selected', null)
+    } else {
+      selectedToken.value = token
+      emit('token-selected', token)
+    }
+    renderUI()
+    return
+  }
+  
+  // Тап в пустое место
+  if (!token) {
+    // В мобильном режиме с активным действием движения - выбираем гекс
+    if (props.mobileMode && props.pendingAction && props.pendingAction.id === 'move' && hex) {
+      emit('action-target-selected', { type: 'hex', hex: hex })
+      return
+    }
+    
+    // Сообщаем о выбранном гексе (для мобильной инфокарточки)
+    if (hex) {
+      emit('hex-selected', hex)
+    }
+    
+    // Снимаем выделение токена
+    if (selectedToken.value) {
+      selectedToken.value = null
+      emit('token-selected', null)
+      renderUI()
+    }
+  }
+}
+
 // ===== ДЕЙСТВИЯ =====
 
 const createNewMap = () => {
@@ -1368,8 +1545,8 @@ const selectionBehaviorDescriptions = {
 
 <template>
   <div class="h-full bg-slate-950 text-slate-50 flex flex-col overflow-hidden relative">
-    <!-- Тулбар (z-index выше canvas) -->
-    <header class="bg-slate-900/90 backdrop-blur border-b border-white/10 px-4 py-2 flex items-center justify-between flex-shrink-0 gap-2 relative z-20">
+    <!-- Тулбар (z-index выше canvas) - скрыт для игроков в мобильном режиме -->
+    <header v-if="!mobileMode || isMaster" class="bg-slate-900/90 backdrop-blur border-b border-white/10 px-4 py-2 flex items-center justify-between flex-shrink-0 gap-2 relative z-20">
       <!-- Левая часть: выбор карты (для мастера) или название карты (для игрока) -->
       <div class="flex items-center gap-2">
         <!-- Для мастера: dropdown выбора карты -->
@@ -1425,14 +1602,17 @@ const selectionBehaviorDescriptions = {
           </span>
         </div>
         
-        <span v-if="activeMap" class="text-xs px-2 py-1 rounded bg-slate-800 border border-white/10">
-          {{ hexCount }} гексов • {{ orientationLabel }}
-        </span>
-        
-        <!-- Индикатор режима просмотра -->
-        <span v-if="isReadonly && activeMap" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-400">
-          👁️ Просмотр
-        </span>
+        <!-- Информация о карте (только для мастера) -->
+        <template v-if="isMaster">
+          <span v-if="activeMap" class="text-xs px-2 py-1 rounded bg-slate-800 border border-white/10">
+            {{ hexCount }} гексов • {{ orientationLabel }}
+          </span>
+          
+          <!-- Индикатор режима просмотра -->
+          <span v-if="isReadonly && activeMap" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-400">
+            👁️ Просмотр
+          </span>
+        </template>
       </div>
       
       <!-- Центр: инструменты редактора (только для мастера) -->
@@ -1835,16 +2015,16 @@ const selectionBehaviorDescriptions = {
         @contextmenu.prevent
       ></canvas>
       
-      <!-- Координаты под курсором -->
+      <!-- Координаты под курсором - скрыты в мобильном режиме для игроков -->
       <div 
-        v-if="hoveredHex" 
+        v-if="hoveredHex && (!mobileMode || isMaster)" 
         class="absolute bottom-4 left-4 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 text-xs font-mono pointer-events-none"
       >
         q: {{ hoveredHex.q }}, r: {{ hoveredHex.r }}
       </div>
       
-      <!-- Zoom indicator -->
-      <div class="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 text-xs pointer-events-none">
+      <!-- Zoom indicator - скрыт в мобильном режиме для игроков -->
+      <div v-if="!mobileMode || isMaster" class="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 text-xs pointer-events-none">
         {{ Math.round(camera.zoom * 100) }}%
       </div>
       </div>
@@ -1859,8 +2039,8 @@ const selectionBehaviorDescriptions = {
       />
     </div>
 
-    <!-- Нижняя панель -->
-    <footer class="bg-slate-900/80 backdrop-blur border-t border-white/10 px-4 py-2 flex-shrink-0 relative z-10">
+    <!-- Нижняя панель - скрыта для игроков в мобильном режиме -->
+    <footer v-if="!mobileMode || isMaster" class="bg-slate-900/80 backdrop-blur border-t border-white/10 px-4 py-2 flex-shrink-0 relative z-10">
       <div class="flex items-center justify-between text-sm">
         <p class="text-slate-400 text-xs">
           <template v-if="editingMap">
