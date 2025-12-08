@@ -24,8 +24,19 @@ const props = defineProps({
   readonly: {
     type: Boolean,
     default: false
+  },
+  mobileMode: {
+    type: Boolean,
+    default: false
+  },
+  pendingAction: {
+    type: Object,
+    default: null
   }
 })
+
+// Emits
+const emit = defineEmits(['action-target-selected'])
 
 const battleMapStore = useBattleMapStore()
 const terrainStore = useTerrainStore()
@@ -730,6 +741,65 @@ const onCanvasMouseMove = (event) => {
   renderUI()
 }
 
+// Touch события для мобильных устройств
+const lastTouchTime = ref(0)
+const touchStart = ref({ x: 0, y: 0 })
+
+const onCanvasTouchStart = (event) => {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0]
+    touchStart.value = { x: touch.clientX, y: touch.clientY }
+    
+    // Обрабатываем как mouse down для совместимости
+    const mouseEvent = {
+      button: 0,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: event.target,
+      preventDefault: () => event.preventDefault()
+    }
+    onCanvasMouseDown(mouseEvent)
+  } else if (event.touches.length === 2) {
+    // Двухпальцевый жест для zoom/pan - пока что заблокируем
+    event.preventDefault()
+  }
+}
+
+const onCanvasTouchMove = (event) => {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0]
+    
+    // Обрабатываем как mouse move для совместимости  
+    const mouseEvent = {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: event.target
+    }
+    onCanvasMouseMove(mouseEvent)
+  }
+  event.preventDefault()
+}
+
+const onCanvasTouchEnd = (event) => {
+  const now = Date.now()
+  const timeDiff = now - lastTouchTime.value
+  lastTouchTime.value = now
+  
+  // Обрабатываем как mouse up для совместимости
+  if (event.changedTouches.length === 1) {
+    const touch = event.changedTouches[0]
+    const mouseEvent = {
+      button: 0,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: event.target
+    }
+    onCanvasMouseUp(mouseEvent)
+  }
+  
+  event.preventDefault()
+}
+
 const onCanvasMouseDown = (event) => {
   // Закрываем открытые dropdown при клике на canvas
   showMapList.value = false
@@ -765,8 +835,14 @@ const onCanvasMouseDown = (event) => {
     return
   }
   
-  // Клик по токену (не мастер) - выделяем его
+  // Клик по токену (не мастер) - выделяем его или выбираем как цель
   if (event.button === 0 && hoveredToken.value) {
+    // В мобильном режиме с активным действием - выбираем цель
+    if (props.mobileMode && props.pendingAction && (props.pendingAction.id === 'attack' || props.pendingAction.id === 'skill')) {
+      emit('action-target-selected', hoveredToken.value)
+      return
+    }
+    
     if (selectedToken.value?.characterId === hoveredToken.value.characterId) {
       // Повторный клик - снимаем выделение
       selectedToken.value = null
@@ -777,10 +853,19 @@ const onCanvasMouseDown = (event) => {
     return
   }
   
-  // Клик в пустое место - снимаем выделение токена
-  if (event.button === 0 && !hoveredToken.value && selectedToken.value) {
-    selectedToken.value = null
-    renderUI()
+  // Клик в пустое место
+  if (event.button === 0 && !hoveredToken.value) {
+    // В мобильном режиме с активным действием движения - выбираем гекс
+    if (props.mobileMode && props.pendingAction && props.pendingAction.id === 'move' && hoveredHex.value) {
+      emit('action-target-selected', { type: 'hex', hex: hoveredHex.value })
+      return
+    }
+    
+    // Снимаем выделение токена
+    if (selectedToken.value) {
+      selectedToken.value = null
+      renderUI()
+    }
   }
   
   // В readonly режиме разрешаем только навигацию и выделение токенов
@@ -1744,6 +1829,9 @@ const selectionBehaviorDescriptions = {
         @mouseup="onCanvasMouseUp"
         @mouseleave="onCanvasMouseLeave"
         @wheel="onCanvasWheel"
+        @touchstart="onCanvasTouchStart"
+        @touchmove="onCanvasTouchMove"
+        @touchend="onCanvasTouchEnd"
         @contextmenu.prevent
       ></canvas>
       

@@ -606,7 +606,7 @@ export const drawToken = (ctx, token, options = {}) => {
   
   // 0. Тёмный фон-интерфейс при hover (если показываем защиту)
   if (shouldShowDefenceUI) {
-    drawTokenHoverUI(ctx, cx, cy, portraitRadius, rotation)
+    drawTokenHoverUI(ctx, cx, cy, portraitRadius, rotation, isSelected, isHovered)
   }
   
   // 1. Портрет (не вращается)
@@ -616,11 +616,6 @@ export const drawToken = (ctx, token, options = {}) => {
   if (wounds && woundSlots) {
     drawScratches(ctx, cx, cy, portraitRadius, wounds, woundSlots)
     drawLightWounds(ctx, cx, cy, portraitRadius, wounds, woundSlots)
-  }
-  
-  // 3. Обводка при hover/select (поверх портрета, но под защитой)
-  if (isSelected || isHovered) {
-    drawTokenRing(ctx, cx, cy, portraitRadius, isSelected, isHovered, shouldShowDefenceUI)
   }
   
   // 4. Защита (только при hover и если есть доступ) - вращается с направлением
@@ -643,67 +638,53 @@ export const drawToken = (ctx, token, options = {}) => {
  * @param {number} portraitRadius - радиус портрета
  * @param {number} rotation - поворот в градусах
  */
-export const drawTokenHoverUI = (ctx, cx, cy, portraitRadius, rotation = 0) => {
+export const drawTokenHoverUI = (ctx, cx, cy, portraitRadius, rotation = 0, isSelected = false, isHovered = false) => {
   ctx.save()
   
   const uiRadius = portraitRadius + 35 // Радиус интерфейса
   
-  // Тёмный градиентный фон
+  // Тёмный градиентный фон с изменением цвета в зависимости от состояния
   const gradient = ctx.createRadialGradient(cx, cy, portraitRadius - 5, cx, cy, uiRadius)
-  gradient.addColorStop(0, 'rgba(15, 23, 42, 0.95)') // Тёмно-синий центр
-  gradient.addColorStop(0.6, 'rgba(15, 23, 42, 0.85)')
-  gradient.addColorStop(1, 'rgba(15, 23, 42, 0)') // Прозрачный край
+  
+  if (isSelected) {
+    // Жёлто-золотистый оттенок для выбранного
+    gradient.addColorStop(0, 'rgba(45, 35, 15, 0.95)')
+    gradient.addColorStop(0.6, 'rgba(35, 28, 12, 0.85)')
+    gradient.addColorStop(1, 'rgba(25, 20, 8, 0)')
+  } else if (isHovered) {
+    // Голубоватый оттенок для hover
+    gradient.addColorStop(0, 'rgba(15, 30, 45, 0.95)')
+    gradient.addColorStop(0.6, 'rgba(12, 25, 38, 0.85)')
+    gradient.addColorStop(1, 'rgba(8, 18, 28, 0)')
+  } else {
+    // Обычный тёмный фон
+    gradient.addColorStop(0, 'rgba(15, 23, 42, 0.95)')
+    gradient.addColorStop(0.6, 'rgba(15, 23, 42, 0.85)')
+    gradient.addColorStop(1, 'rgba(15, 23, 42, 0)')
+  }
   
   ctx.beginPath()
   ctx.arc(cx, cy, uiRadius, 0, Math.PI * 2)
   ctx.fillStyle = gradient
   ctx.fill()
   
-  // Тонкая обводка интерфейса
+  // Тонкая обводка интерфейса с изменением цвета
   ctx.beginPath()
   ctx.arc(cx, cy, uiRadius - 2, 0, Math.PI * 2)
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)'
+  if (isSelected) {
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)' // Золотистая обводка
+  } else if (isHovered) {
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)' // Голубая обводка
+  } else {
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)' // Обычная серая
+  }
   ctx.lineWidth = 1
   ctx.stroke()
   
   ctx.restore()
 }
 
-/**
- * Нарисовать обводку токена (hover/selection)
- * @param {CanvasRenderingContext2D} ctx
- * @param {number} cx - центр X
- * @param {number} cy - центр Y
- * @param {number} portraitRadius - радиус портрета
- * @param {boolean} isSelected - выбран ли токен
- * @param {boolean} isHovered - наведён ли курсор
- * @param {boolean} showDefenceUI - отображается ли UI защиты
- */
-export const drawTokenRing = (ctx, cx, cy, portraitRadius, isSelected, isHovered, showDefenceUI = false) => {
-  ctx.save()
-  
-  // Если показываем UI защиты, обводим внешний круг (фоновую подложку)
-  // Иначе - обводим портрет
-  const ringRadius = showDefenceUI ? portraitRadius + 22 : portraitRadius
-  
-  if (isSelected) {
-    // Золотая обводка для выбранного
-    ctx.beginPath()
-    ctx.arc(cx, cy, ringRadius + 2, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.9)'
-    ctx.lineWidth = 3
-    ctx.stroke()
-  } else if (isHovered) {
-    // Голубая обводка для hover
-    ctx.beginPath()
-    ctx.arc(cx, cy, ringRadius + 1, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)'
-    ctx.lineWidth = 2
-    ctx.stroke()
-  }
-  
-  ctx.restore()
-}
+
 
 /**
  * Нарисовать все токены на слое UI

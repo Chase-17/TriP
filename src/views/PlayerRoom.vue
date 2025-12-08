@@ -1,26 +1,31 @@
 <script setup>
 /**
  * PlayerRoom - игровая комната для игрока
- * Чистый интерфейс: чат, персонаж, карта (только просмотр)
+ * Адаптивный интерфейс: десктоп и мобильная версия
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
+import { useCharactersStore } from '@/stores/characters'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import SplashOverlay from '@/components/SplashOverlay.vue'
+import MobilePlayerInterface from '@/components/MobilePlayerInterface.vue'
+import { isMobileScreen, setupMobileViewport } from '@/utils/mobile'
 
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const userStore = useUserStore()
+const charactersStore = useCharactersStore()
 
 const { roomId, status, connections } = storeToRefs(session)
 const { nickname, avatar, currentView } = storeToRefs(userStore)
+const { characters } = storeToRefs(charactersStore)
 
 // Computed свойства
 const isConnected = computed(() => status.value === 'in-room' || status.value === 'ready')
@@ -46,11 +51,28 @@ const activeView = ref('battle-map')
 const isConnecting = ref(true)
 const connectionError = ref('')
 
+// Мобильный интерфейс
+const isMobile = ref(isMobileScreen())
+const pendingAction = ref(null)
+
 const navItems = [
   { id: 'chat', label: 'Чат', icon: '💬' },
   { id: 'character-sheet', label: 'Персонаж', icon: '👤' },
   { id: 'battle-map', label: 'Карта', icon: '🗺️' }
 ]
+
+// Персонаж игрока
+const playerCharacter = computed(() => {
+  const userId = userStore.userId
+  return characters.value.find(char => char.userId === userId)
+})
+
+// Определение, чей сейчас ход (заглушка)
+const currentTurn = ref(null)
+const isPlayerTurn = computed(() => {
+  // TODO: реализовать логику определения хода
+  return true // пока что всегда ход игрока для тестирования
+})
 
 onMounted(async () => {
   const roomIdParam = route.params.roomId
@@ -58,6 +80,11 @@ onMounted(async () => {
   if (!roomIdParam) {
     router.push('/')
     return
+  }
+  
+  // Настройка мобильного viewport
+  if (isMobile.value) {
+    setupMobileViewport()
   }
   
   // Подключаемся к комнате
@@ -68,6 +95,16 @@ onMounted(async () => {
     connectionError.value = 'Не удалось подключиться к комнате'
     isConnecting.value = false
   }
+  
+  // Слушаем изменения размера экрана
+  const handleResize = () => {
+    isMobile.value = isMobileScreen()
+  }
+  window.addEventListener('resize', handleResize)
+  
+  onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
+  })
 })
 
 onUnmounted(() => {
@@ -81,6 +118,41 @@ const setView = (view) => {
 const leaveRoom = () => {
   session.leaveRoom()
   router.push('/')
+}
+
+// Мобильные действия
+const handleSelectAction = (action) => {
+  pendingAction.value = {
+    id: action.id,
+    title: action.label,
+    description: getActionDescription(action.id),
+    icon: action.icon,
+    canConfirm: false // будет изменяться в зависимости от выбора на карте
+  }
+}
+
+const handleConfirmAction = () => {
+  if (pendingAction.value) {
+    console.log('Выполняем действие:', pendingAction.value.id)
+    // TODO: реализовать выполнение действия
+    pendingAction.value = null
+  }
+}
+
+const handleCancelAction = () => {
+  pendingAction.value = null
+}
+
+const getActionDescription = (actionId) => {
+  const descriptions = {
+    move: 'Выберите место для перемещения',
+    attack: 'Выберите цель для атаки', 
+    defend: 'Выберите сектор защиты',
+    skill: 'Выберите навык и цель',
+    ready: 'Сигнализировать о готовности',
+    help: 'Показать справку'
+  }
+  return descriptions[actionId] || 'Выберите действие'
 }
 </script>
 
@@ -109,7 +181,37 @@ const leaveRoom = () => {
       </div>
     </div>
     
-    <!-- Main content -->
+    <!-- Mobile Interface -->
+    <template v-else-if="isMobile">
+      <MobilePlayerInterface
+        :character="playerCharacter"
+        :active-view="activeView"
+        :connection-status="status"
+        :current-turn="currentTurn"
+        :is-player-turn="isPlayerTurn"
+        :pending-action="pendingAction"
+        @set-view="setView"
+        @leave-room="leaveRoom"
+        @select-action="handleSelectAction"
+        @confirm-action="handleConfirmAction"
+        @cancel-action="handleCancelAction"
+      />
+      
+      <!-- Content для мобильного интерфейса -->
+      <main class="flex-1 overflow-hidden">
+        <ChatPanel v-show="activeView === 'chat'" />
+        <CharacterSheet v-show="activeView === 'character-sheet'" />
+        <BattleMap 
+          v-show="activeView === 'battle-map'" 
+          :readonly="!isPlayerTurn"
+          :mobile-mode="true"
+          :pending-action="pendingAction"
+          @action-target-selected="pendingAction && (pendingAction.canConfirm = true)"
+        />
+      </main>
+    </template>
+    
+    <!-- Desktop Interface -->
     <template v-else>
       <!-- Header -->
       <header class="bg-slate-900/90 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center justify-between flex-shrink-0">
