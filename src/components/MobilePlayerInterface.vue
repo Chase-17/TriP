@@ -11,9 +11,11 @@
         :player-facing="playerFacing"
         :collapsed="infoCardCollapsed"
         :is-player-turn="isPlayerTurn"
+        :player-token-position="playerTokenPosition"
         @toggle-collapse="infoCardCollapsed = !infoCardCollapsed"
         @open-character-sheet="(charId) => $emit('open-character-sheet', charId)"
         @switch-equipment="$emit('switch-equipment')"
+        @move-to-hex="(hex) => $emit('move-to-hex', hex)"
       />
     </div>
     
@@ -112,7 +114,12 @@
       
       <!-- Навигация + статус (всегда видна) -->
       <div class="nav-bar">
-        <!-- Навигация -->
+        <!-- Кнопка меню (слева) -->
+        <button class="menu-btn" @click="toggleMenu">
+          <Icon icon="mdi:menu" class="w-5 h-5" />
+        </button>
+        
+        <!-- Навигация (центр) -->
         <div class="nav-tabs">
           <button
             v-for="item in navItems"
@@ -125,15 +132,11 @@
           </button>
         </div>
         
-        <!-- Статус подключения -->
+        <!-- Статус подключения (справа с текстом) -->
         <div class="connection-indicator" :class="connectionStatusClass">
+          <span class="connection-text">{{ connectionStatusText }}</span>
           <div class="connection-dot"></div>
         </div>
-        
-        <!-- Кнопка меню -->
-        <button class="menu-btn" @click="toggleMenu">
-          <Icon icon="mdi:dots-vertical" class="w-5 h-5" />
-        </button>
       </div>
     </div>
     
@@ -202,10 +205,15 @@ const props = defineProps({
     type: Object,
     default: null
     // { id, title, description, timeoutSeconds, startedAt }
+  },
+  // Позиция токена игрока на карте
+  playerTokenPosition: {
+    type: Object,
+    default: null // { q, r }
   }
 })
 
-const emit = defineEmits(['set-view', 'leave-room', 'select-action', 'confirm-action', 'cancel-action', 'switch-equipment', 'reaction-accept', 'reaction-decline', 'open-character-sheet'])
+const emit = defineEmits(['set-view', 'leave-room', 'select-action', 'confirm-action', 'cancel-action', 'switch-equipment', 'reaction-accept', 'reaction-decline', 'open-character-sheet', 'move-to-hex'])
 
 // Состояние UI
 const infoCardCollapsed = ref(false)
@@ -272,6 +280,15 @@ const connectionStatusClass = computed(() => {
     case 'connected': return 'status-connected'
     case 'connecting': return 'status-connecting'
     default: return 'status-disconnected'
+  }
+})
+
+// Текст статуса подключения
+const connectionStatusText = computed(() => {
+  switch (props.connectionStatus) {
+    case 'connected': return 'онлайн'
+    case 'connecting': return '...'
+    default: return 'офлайн'
   }
 })
 
@@ -401,8 +418,23 @@ const handleActionClick = (action) => {
 .connection-indicator {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.connection-text {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.status-connected .connection-text {
+  color: #34d399;
+}
+
+.status-disconnected .connection-text {
+  color: #f87171;
 }
 
 .connection-dot {

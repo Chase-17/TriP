@@ -20,13 +20,17 @@ export const useUserStore = defineStore('user', {
     currentView: 'chat', // chat | character-sheet | battle-map
     showCharacterWizard: false, // Открыт ли визард создания персонажа
     
+    // Предпочтения навыков по персонажам
+    // Формат: { [characterId]: { expandedSkills: ['skillId1', 'skillId2'], allExpanded: false } }
+    skillPreferences: {},
+    
     // Внутренний коллбэк для уведомления об изменениях профиля
     _profileUpdateCallback: null
   }),
   
   persist: {
     key: 'trip-user-v2',
-    paths: ['userId', 'nickname', 'avatar', 'currentView', 'showCharacterWizard']
+    paths: ['userId', 'nickname', 'avatar', 'currentView', 'showCharacterWizard', 'skillPreferences']
   },
   
   getters: {
@@ -97,6 +101,34 @@ export const useUserStore = defineStore('user', {
       this.showCharacterWizard = false
     },
     
+    // === Предпочтения навыков ===
+    getSkillPreferences(characterId) {
+      return this.skillPreferences[characterId] || { expandedSkills: [], allExpanded: true }
+    },
+    
+    setSkillExpanded(characterId, skillId, expanded) {
+      if (!this.skillPreferences[characterId]) {
+        this.skillPreferences[characterId] = { expandedSkills: [], allExpanded: true }
+      }
+      const prefs = this.skillPreferences[characterId]
+      const idx = prefs.expandedSkills.indexOf(skillId)
+      
+      if (expanded && idx === -1) {
+        prefs.expandedSkills.push(skillId)
+      } else if (!expanded && idx !== -1) {
+        prefs.expandedSkills.splice(idx, 1)
+      }
+    },
+    
+    setAllSkillsExpanded(characterId, expanded) {
+      if (!this.skillPreferences[characterId]) {
+        this.skillPreferences[characterId] = { expandedSkills: [], allExpanded: expanded }
+      } else {
+        this.skillPreferences[characterId].allExpanded = expanded
+        this.skillPreferences[characterId].expandedSkills = []
+      }
+    },
+
     reset() {
       this.nickname = ''
       this.avatar = null

@@ -15,7 +15,7 @@ import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import SplashOverlay from '@/components/SplashOverlay.vue'
-import MobilePlayerInterface from '@/components/MobilePlayerInterface.vue'
+import MobileGameLayout from '@/components/MobileGameLayout.vue'
 import { isMobileScreen, setupMobileViewport } from '@/utils/mobile'
 
 const route = useRoute()
@@ -72,9 +72,18 @@ const playerFacing = computed(() => {
   return token?.facing || 0
 })
 
+// Позиция токена игрока на карте
+const playerTokenPosition = computed(() => {
+  if (!playerCharacter.value) return null
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return null
+  return battleMapStore.findTokenPosition(mapId, playerCharacter.value.id)
+})
+
 // Отладка
 console.log('PlayerRoom: isMobile =', isMobile.value, 'screen width =', window.innerWidth)
 
+// Порядок вкладок для навигации
 const navItems = [
   { id: 'chat', label: 'Чат', icon: '💬' },
   { id: 'character-sheet', label: 'Персонаж', icon: '👤' },
@@ -276,6 +285,25 @@ const handleHexSelected = (hex) => {
   // selectedToken остаётся если кликнули на гекс с токеном
 }
 
+// Обработчик перемещения на гекс (из инфокарточки)
+const handleMoveToHex = (hex) => {
+  if (!hex) return
+  console.log('Перемещение на гекс из инфокарточки:', hex)
+  movePlayerCharacter(hex)
+  // Сбрасываем выбранный гекс после перемещения
+  selectedHex.value = null
+}
+
+// Обработчик двойного тапа по гексу (перемещение)
+const handleHexDoubleTap = (hex) => {
+  if (!hex) return
+  if (!isPlayerTurn.value) return
+  console.log('Двойной тап по гексу - перемещение:', hex)
+  movePlayerCharacter(hex)
+  // Сбрасываем выбранный гекс после перемещения
+  selectedHex.value = null
+}
+
 // Обработчик смены снаряжения
 const handleSwitchEquipment = () => {
   // TODO: открыть модалку смены снаряжения
@@ -353,13 +381,13 @@ const setupReactionListener = () => {
     
     <!-- Mobile Interface -->
     <template v-else-if="isMobile">
-      <!-- Верхняя панель мобильного интерфейса с инфокарточкой -->
-      <MobilePlayerInterface
+      <MobileGameLayout
         :character="playerCharacter"
+        :characters="characters"
         :selected-token="selectedToken"
         :selected-hex="selectedHex"
         :player-facing="playerFacing"
-        :active-view="activeView"
+        :player-token-position="playerTokenPosition"
         :connection-status="status"
         :current-turn="currentTurn"
         :is-player-turn="isPlayerTurn"
@@ -374,22 +402,12 @@ const setupReactionListener = () => {
         @reaction-accept="handleReactionAccept"
         @reaction-decline="handleReactionDecline"
         @open-character-sheet="handleOpenCharacterSheet"
+        @move-to-hex="handleMoveToHex"
+        @token-selected="handleTokenSelected"
+        @hex-selected="handleHexSelected"
+        @hex-double-tap="handleHexDoubleTap"
+        @action-target-selected="handleActionTargetSelected"
       />
-      
-      <!-- Content для мобильного интерфейса - расположен между header и bottom panel -->
-      <main class="flex-1 overflow-auto bg-slate-950" style="padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px))">
-        <ChatPanel v-show="activeView === 'chat'" />
-        <CharacterSheet v-show="activeView === 'character-sheet'" />
-        <BattleMap 
-          v-show="activeView === 'battle-map'" 
-          :readonly="!isPlayerTurn"
-          :mobile-mode="true"
-          :pending-action="pendingAction"
-          @action-target-selected="handleActionTargetSelected"
-          @token-selected="handleTokenSelected"
-          @hex-selected="handleHexSelected"
-        />
-      </main>
     </template>
     
     <!-- Desktop Interface -->

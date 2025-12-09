@@ -36,7 +36,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['action-target-selected', 'token-selected', 'hex-selected'])
+const emit = defineEmits(['action-target-selected', 'token-selected', 'hex-selected', 'hex-double-tap'])
 
 const battleMapStore = useBattleMapStore()
 const terrainStore = useTerrainStore()
@@ -106,6 +106,9 @@ const selectionStart = ref(null) // Начальный гекс выделени
 const selectionStartPixel = ref(null) // Начальная точка в пикселях (для прямоугольника)
 const selectionPreview = ref([]) // Превью выделяемых гексов
 const selectedHexes = ref(new Set()) // Текущее выделение
+
+// Для отслеживания двойного тапа по гексу
+const lastSelectedHex = ref(null) // Последний выбранный гекс { q, r, time }
 
 const dragStart = ref({ x: 0, y: 0 })
 
@@ -205,6 +208,18 @@ const currentTerrainInfo = computed(() => {
   
   return { id: 'void', name: 'Пустота', fallbackColor: '#0d1117', passability: 0 }
 })
+
+// Получить информацию о гексе с terrain для мобильного интерфейса
+const getHexWithTerrain = (hex) => {
+  if (!hex || !activeMap.value) return hex
+  const terrainId = battleMapStore.getHexTerrain(activeMap.value.id, hex.q, hex.r)
+  const terrain = terrainStore.getTerrainById(terrainId)
+  return {
+    q: hex.q,
+    r: hex.r,
+    terrain: terrain || null
+  }
+}
 
 // Инициализация
 onMounted(() => {
@@ -804,13 +819,13 @@ const onCanvasMouseDown = (event) => {
   if (event.button === 0 && !hoveredToken.value) {
     // В мобильном режиме с активным действием движения - выбираем гекс
     if (props.mobileMode && props.pendingAction && props.pendingAction.id === 'move' && hoveredHex.value) {
-      emit('action-target-selected', { type: 'hex', hex: hoveredHex.value })
+      emit('action-target-selected', { type: 'hex', hex: getHexWithTerrain(hoveredHex.value) })
       return
     }
     
     // Сообщаем о выбранном гексе (для мобильной инфокарточки)
     if (hoveredHex.value) {
-      emit('hex-selected', hoveredHex.value)
+      emit('hex-selected', getHexWithTerrain(hoveredHex.value))
     }
     
     // Снимаем выделение токена
@@ -1087,6 +1102,7 @@ const touchState = ref({
   lastTap: null,
   isMultiTouch: false,
   isPanning: false,
+  wasZooming: false, // Флаг "был зум" чтобы не начинать пан после отпускания одного пальца
   initialDistance: 0,
   initialZoom: 1
 })
@@ -1115,6 +1131,7 @@ const onCanvasTouchStart = (event) => {
     touchState.value.initialDistance = distance
     touchState.value.initialZoom = camera.value.zoom
     touchState.value.isPanning = false
+    touchState.value.wasZooming = true // Отмечаем что был зум
   }
 }
 
@@ -1123,8 +1140,8 @@ const onCanvasTouchMove = (event) => {
   const touches = Array.from(event.touches)
   touchState.value.touches = touches
 
-  if (touches.length === 1 && !touchState.value.isMultiTouch) {
-    // Один палец - пан
+  if (touches.length === 1 && !touchState.value.isMultiTouch && !touchState.value.wasZooming) {
+    // Один палец - пан (только если не было зума)
     const touch = touches[0]
     if (touchState.value.lastTap && !touchState.value.isPanning) {
       const dx = touch.clientX - touchState.value.lastTap.x
@@ -1252,6 +1269,7 @@ const onCanvasTouchEnd = (event) => {
   touchState.value.lastTap = null
   touchState.value.isMultiTouch = false
   touchState.value.isPanning = false
+  touchState.value.wasZooming = false
   touchState.value.initialDistance = 0
   touchState.value.initialZoom = 1
   
@@ -1285,13 +1303,29 @@ const handleTouchTap = (token, hex) => {
   if (!token) {
     // В мобильном режиме с активным действием движения - выбираем гекс
     if (props.mobileMode && props.pendingAction && props.pendingAction.id === 'move' && hex) {
-      emit('action-target-selected', { type: 'hex', hex: hex })
+      emit('action-target-selected', { type: 'hex', hex: getHexWithTerrain(hex) })
       return
+    }
+    
+    // Проверяем двойной тап по тому же гексу
+    if (hex && props.mobileMode) {
+      const now = Date.now()
+      const last = lastSelectedHex.value
+      
+      if (last && last.q === hex.q && last.r === hex.r && (now - last.time) < 500) {
+        // Двойной тап - отправляем событие для перемещения
+        emit('hex-double-tap', getHexWithTerrain(hex))
+        lastSelectedHex.value = null
+        return
+      }
+      
+      // Сохраняем последний выбранный гекс
+      lastSelectedHex.value = { q: hex.q, r: hex.r, time: now }
     }
     
     // Сообщаем о выбранном гексе (для мобильной инфокарточки)
     if (hex) {
-      emit('hex-selected', hex)
+      emit('hex-selected', getHexWithTerrain(hex))
     }
     
     // Снимаем выделение токена
@@ -1446,6 +1480,10 @@ const placeTokenOnHex = (characterId, q, r) => {
   const result = battleMapStore.placeToken(activeMap.value.id, characterId, q, r, 0)
   if (result) {
     renderUI() // Перерисовать с новым токеном
+    // Синхронизируем с игроками если мастер
+    if (isMaster.value) {
+      sessionStore.broadcastMap()
+    }
   }
   return result
 }

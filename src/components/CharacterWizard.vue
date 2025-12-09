@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { useUserStore } from '@/stores/user'
 import { useCharactersStore } from '@/stores/characters'
+import { useSessionStore } from '@/stores/session'
 import { generateAvatar } from '@/utils/avatar'
 import { calculateMaxHP } from '@/utils/wounds'
 import { presetUrl } from '@/utils/assets'
@@ -9,6 +10,7 @@ import CharacterCreationCanvas from './CharacterCreationCanvas.vue'
 const emit = defineEmits(['close', 'created'])
 const userStore = useUserStore()
 const charactersStore = useCharactersStore()
+const sessionStore = useSessionStore()
 
 const createCharacter = (formData) => {
   // Используем выбранный портрет или генерируем аватар

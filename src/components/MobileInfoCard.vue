@@ -31,7 +31,11 @@
           <Icon icon="mdi:chevron-down" class="w-5 h-5" />
         </button>
         <span class="character-name">{{ displayCharacter?.name || 'Неизвестно' }}</span>
-        <span v-if="!isOwnToken" class="other-token-badge">Чужой</span>
+        <span v-if="!isOwnToken && selectedToken" class="other-token-badge">Чужой</span>
+        <!-- Кнопка Лист справа (только для своего токена) -->
+        <button v-if="isOwnToken" class="header-action-btn" @click.stop="$emit('open-character-sheet', displayCharacter?.id)">
+          <Icon icon="mdi:file-document-outline" class="w-4 h-4" />
+        </button>
       </div>
       
       <!-- Контент карточки -->
@@ -97,7 +101,7 @@
           </div>
           
           <!-- Для чужих токенов - базовая информация -->
-          <div v-else-if="!isOwnToken && displayCharacter" class="other-info">
+          <div v-else-if="!isOwnToken && !showHexInfo && displayCharacter" class="other-info">
             <div class="info-row">
               <Icon icon="mdi:account" class="w-4 h-4 text-slate-400" />
               <span>{{ displayCharacter.race || 'Неизвестная раса' }}</span>
@@ -108,8 +112,8 @@
             </div>
           </div>
           
-          <!-- Для террейна -->
-          <div v-else-if="selectedHex && !selectedToken" class="terrain-info">
+          <!-- Для террейна / выбранного гекса -->
+          <div v-else-if="showHexInfo" class="terrain-info">
             <div class="info-row">
               <Icon icon="mdi:map-marker" class="w-4 h-4 text-slate-400" />
               <span>Гекс {{ selectedHex.q }}, {{ selectedHex.r }}</span>
@@ -118,20 +122,40 @@
               <Icon icon="mdi:terrain" class="w-4 h-4 text-slate-400" />
               <span>{{ selectedHex.terrain.name || 'Неизвестная местность' }}</span>
             </div>
+            <!-- Характеристики террейна -->
+            <div v-if="selectedHex.terrain" class="terrain-stats">
+              <!-- Стоимость перемещения -->
+              <div class="stat-item" :class="movementCostClass">
+                <Icon icon="mdi:walk" class="w-3.5 h-3.5" />
+                <span>{{ movementCost }}</span>
+              </div>
+              <!-- Ближний бой -->
+              <div class="stat-item" :class="meleeAdvantageClass">
+                <Icon icon="mdi:sword-cross" class="w-3.5 h-3.5" />
+                <span>{{ meleeAdvantageText }}</span>
+              </div>
+              <!-- Видимость -->
+              <div class="stat-item" :class="visibilityClass">
+                <Icon :icon="visibilityIcon" class="w-3.5 h-3.5" />
+                <span>{{ visibilityText }}</span>
+              </div>
+            </div>
+            <!-- Дистанция -->
+            <div v-if="distanceToHex !== null" class="info-row distance-row">
+              <Icon icon="mdi:map-marker-distance" class="w-4 h-4 text-sky-400" />
+              <span>{{ distanceToHex }} гекс{{ distanceToHex === 1 ? '' : distanceToHex < 5 ? 'а' : 'ов' }}</span>
+            </div>
+            <!-- Кнопка перемещения -->
+            <button 
+              v-if="canMove" 
+              class="move-btn"
+              @click.stop="handleMoveToHex"
+            >
+              <Icon icon="mdi:run" class="w-4 h-4" />
+              <span>Переместиться</span>
+            </button>
           </div>
         </div>
-      </div>
-      
-      <!-- Кнопки действий (только для своего токена) -->
-      <div v-if="isOwnToken" class="card-actions">
-        <button class="action-btn" @click.stop="$emit('open-character-sheet', displayCharacter?.id)">
-          <Icon icon="mdi:file-document-outline" class="w-4 h-4" />
-          <span>Лист</span>
-        </button>
-        <button class="action-btn" @click.stop="$emit('switch-equipment')">
-          <Icon icon="mdi:shield-sword" class="w-4 h-4" />
-          <span>Снаряжение</span>
-        </button>
       </div>
     </div>
   </div>
@@ -169,20 +193,143 @@ const props = defineProps({
   isPlayerTurn: {
     type: Boolean,
     default: false
+  },
+  playerTokenPosition: {
+    type: Object,
+    default: null // { q, r }
+  },
+  // Всегда показывать персонажа игрока (для страницы персонажа)
+  alwaysShowPlayer: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['toggle-collapse', 'open-character-sheet', 'switch-equipment'])
+const emit = defineEmits(['toggle-collapse', 'open-character-sheet', 'switch-equipment', 'move-to-hex'])
 
 const defenceCanvas = ref(null)
-const canvasSize = 176 // Увеличенный размер (2x от 88)
+const canvasSize = 140 // Размер подобран для стабильной высоты панели
+
+// Вычисление расстояния до выбранного гекса
+const hexDistance = (q1, r1, q2, r2) => {
+  return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2
+}
+
+const distanceToHex = computed(() => {
+  if (!props.selectedHex || !props.playerTokenPosition) return null
+  return hexDistance(
+    props.playerTokenPosition.q,
+    props.playerTokenPosition.r,
+    props.selectedHex.q,
+    props.selectedHex.r
+  )
+})
+
+// Стоимость перемещения на гекс
+const movementCost = computed(() => {
+  if (!props.selectedHex?.terrain) return 1
+  return props.selectedHex.terrain.movementCost ?? 1
+})
+
+// Класс для стоимости перемещения
+const movementCostClass = computed(() => {
+  const cost = movementCost.value
+  if (cost >= 5) return 'stat-blocked'
+  if (cost >= 3) return 'stat-hard'
+  if (cost >= 2) return 'stat-medium'
+  return 'stat-easy'
+})
+
+// Бонус ближнего боя
+const meleeAdvantage = computed(() => {
+  if (!props.selectedHex?.terrain) return 0
+  return props.selectedHex.terrain.meleeAdvantage ?? 0
+})
+
+const meleeAdvantageText = computed(() => {
+  const val = meleeAdvantage.value
+  if (val > 0) return `+${val}`
+  if (val < 0) return `${val}`
+  return '0'
+})
+
+const meleeAdvantageClass = computed(() => {
+  const val = meleeAdvantage.value
+  if (val > 0) return 'stat-bonus'
+  if (val < 0) return 'stat-penalty'
+  return 'stat-neutral'
+})
+
+// Видимость
+const visibility = computed(() => {
+  if (!props.selectedHex?.terrain) return 'open'
+  return props.selectedHex.terrain.visibility ?? 'open'
+})
+
+const visibilityText = computed(() => {
+  const map = {
+    'open': 'Откр.',
+    'partial': 'Част.',
+    'blocking': 'Блок.'
+  }
+  return map[visibility.value] || visibility.value
+})
+
+const visibilityIcon = computed(() => {
+  const map = {
+    'open': 'mdi:eye-outline',
+    'partial': 'mdi:eye-off-outline',
+    'blocking': 'mdi:eye-off'
+  }
+  return map[visibility.value] || 'mdi:eye-outline'
+})
+
+const visibilityClass = computed(() => {
+  const map = {
+    'open': 'stat-neutral',
+    'partial': 'stat-medium',
+    'blocking': 'stat-hard'
+  }
+  return map[visibility.value] || 'stat-neutral'
+})
+
+// Можно ли переместиться
+const canMove = computed(() => {
+  // Нужен выбранный гекс, не токен, и ход игрока
+  if (!props.selectedHex || props.selectedToken) return false
+  if (!props.isPlayerTurn) return false
+  if (!props.playerTokenPosition) return false
+  // Нельзя перемещаться в текущий гекс
+  if (props.selectedHex.q === props.playerTokenPosition.q && 
+      props.selectedHex.r === props.playerTokenPosition.r) return false
+  // Нельзя ходить на непроходимый террейн
+  if (movementCost.value >= 5) return false
+  return true
+})
+
+const handleMoveToHex = () => {
+  if (canMove.value) {
+    emit('move-to-hex', props.selectedHex)
+  }
+}
 
 // Определение своего токена
 const isOwnToken = computed(() => {
+  // Если alwaysShowPlayer - всегда показываем как своего
+  if (props.alwaysShowPlayer) return true
+  // Если выбран гекс без токена - это не "свой токен", это гекс
+  if (props.selectedHex && !props.selectedToken) return false
   // Если ничего не выбрано - показываем своего персонажа
   if (!props.selectedToken) return true
   if (!props.playerCharacter) return false
   return props.selectedToken.characterId === props.playerCharacter.id
+})
+
+// Показывать ли информацию о гексе
+const showHexInfo = computed(() => {
+  // Не показываем гекс если alwaysShowPlayer
+  if (props.alwaysShowPlayer) return false
+  return props.selectedHex && !props.selectedToken
 })
 
 // Персонаж для отображения
@@ -531,15 +678,20 @@ onMounted(async () => {
 
 <style scoped>
 .mobile-info-card {
-  background: rgba(15, 23, 42, 0.95);
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: transparent;
+  border-radius: 0;
+  border: none;
   overflow: hidden;
-  min-height: 200px;
+  /* Заполняем родительский контейнер */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .mobile-info-card.collapsed {
-  min-height: auto;
+  height: 100%;
+  justify-content: flex-start;
 }
 
 .mobile-info-card.own-token {
@@ -609,13 +761,14 @@ onMounted(async () => {
 .expanded-content {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 4px 12px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 }
 
@@ -647,10 +800,26 @@ onMounted(async () => {
   color: #fb923c;
 }
 
+/* Кнопка в header */
+.header-action-btn {
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  cursor: pointer;
+}
+
+.header-action-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+}
+
 .card-body {
+  flex: 1;
   display: flex;
+  align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 8px 12px;
 }
 
 .portrait-section {
@@ -748,6 +917,91 @@ onMounted(async () => {
   gap: 6px;
   font-size: 12px;
   color: #cbd5e1;
+}
+
+.distance-row {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* Характеристики террейна */
+.terrain-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 0;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.stat-easy {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.stat-medium {
+  color: #eab308;
+  background: rgba(234, 179, 8, 0.15);
+}
+
+.stat-hard {
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.15);
+}
+
+.stat-blocked {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.stat-neutral {
+  color: #94a3b8;
+}
+
+.stat-bonus {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.stat-penalty {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Кнопка перемещения */
+.move-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.move-btn:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.move-btn:active {
+  transform: scale(0.98);
 }
 
 /* Действия */

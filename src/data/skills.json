@@ -1,0 +1,79 @@
+{
+  "skills": [
+    {
+      "id": "knowNature",
+      "name": "Знание природы",
+      "sourceType": "class",
+      "sourceId": "scholar",
+      "aspectId": "nature",
+      "maxLevel": 3,
+      "levels": [
+        {
+          "level": 1,
+          "description": "Все проверки Поиска для Вас на одну категорию проще."
+        },
+        {
+          "level": 2,
+          "description": "Вы можете выполнить две проверки Поиска вместо одной за каждый ход."
+        },
+        {
+          "level": 3,
+          "description": "Вы можете выполнить любые две проверки одного типа вместо одной за каждый ход. Проверки Поиска проще на две категории."
+        }
+      ]
+    },
+    {
+      "id": "knowEnemy",
+      "name": "Знание врага",
+      "sourceType": "class",
+      "sourceId": "scholar",
+      "aspectId": "knowledge",
+      "maxLevel": 3,
+      "levels": [
+        {
+          "level": 1,
+          "description": "Любые атаки по противникам, которых Вам уже удалось ранить - на одну категорию проще."
+        },
+        {
+          "level": 2,
+          "description": "Если Вы успешно отбили удар противника, Ваша защита против него повышается на одну категорию."
+        },
+        {
+          "level": 3,
+          "description": "Вам достаточно видеть как другие ранят противника или успешно отражают его удары, чтобы адаптироваться."
+        }
+      ]
+    },
+    {
+      "id": "constructor",
+      "name": "Конструктор",
+      "sourceType": "class",
+      "sourceId": "scholar",
+      "aspectId": "knowledge",
+      "maxLevel": 3,
+      "levels": [
+        {
+          "level": 1,
+          "description": "Преимущество в две категории на создание предметов с помощью немагических ремёсел."
+        },
+        {
+          "level": 2,
+          "description": "Вы можете подбирать рецепты самостоятельно через проверку Поиска или Влияния."
+        },
+        {
+          "level": 3,
+          "description": "Вы можете сами создавать рецепты, изучая природные материалы."
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "sourceTypes": {
+      "class": { "name": "Класс", "icon": "mdi:school" },
+      "aspect": { "name": "Аспект", "icon": "mdi:hexagon" },
+      "race": { "name": "Раса", "icon": "mdi:account" },
+      "item": { "name": "Предмет", "icon": "mdi:diamond-stone" }
+    }
+  }
+}

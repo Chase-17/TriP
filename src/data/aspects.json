@@ -15,6 +15,13 @@
         "nameEn": "Conflict",
         "description": "Проверки прямого противостояния, боя и физической силы"
       },
+      "mode": {
+        "name": "Напористо",
+        "nameEn": "Assertive",
+        "icon": "game-icons:fist",
+        "description": "Действуйте решительно и прямолинейно",
+        "bonuses": []
+      },
       "color": "#dc2626",
       "colorName": "red",
       "icon": "game-icons:crossed-swords",
@@ -48,6 +55,13 @@
         "name": "Порядок",
         "nameEn": "Order",
         "description": "Проверки знаний, логики и систематического подхода"
+      },
+      "mode": {
+        "name": "Рассудительно",
+        "nameEn": "Deliberate",
+        "icon": "game-icons:brain",
+        "description": "Анализируйте и планируйте каждый шаг",
+        "bonuses": []
       },
       "color": "#3b82f7",
       "colorName": "blue",
@@ -83,6 +97,13 @@
         "nameEn": "Influence",
         "description": "Проверки социального взаимодействия и убеждения"
       },
+      "mode": {
+        "name": "Выразительно",
+        "nameEn": "Expressive",
+        "icon": "game-icons:conversation",
+        "description": "Общайтесь открыто и убедительно",
+        "bonuses": []
+      },
       "color": "#f59e0b",
       "colorName": "amber",
       "icon": "game-icons:human-pyramid",
@@ -116,6 +137,13 @@
         "name": "Коварство",
         "nameEn": "Treachery",
         "description": "Проверки скрытности, обмана и манипуляций"
+      },
+      "mode": {
+        "name": "Скрытно",
+        "nameEn": "Stealthy",
+        "icon": "game-icons:ninja-mask",
+        "description": "Действуйте незаметно и осторожно",
+        "bonuses": []
       },
       "color": "#374151",
       "colorName": "gray",
@@ -151,6 +179,13 @@
         "nameEn": "Chaos",
         "description": "Проверки магии, интуиции и духовной связи"
       },
+      "mode": {
+        "name": "Чутко",
+        "nameEn": "Intuitive",
+        "icon": "game-icons:third-eye",
+        "description": "Доверьтесь интуиции и предчувствиям",
+        "bonuses": []
+      },
       "color": "#9333ea",
       "colorName": "purple",
       "icon": "game-icons:pentacle",
@@ -184,6 +219,13 @@
         "name": "Поиск",
         "nameEn": "Search",
         "description": "Проверки наблюдательности, выживания и связи с природой"
+      },
+      "mode": {
+        "name": "Внимательно",
+        "nameEn": "Watchful",
+        "icon": "game-icons:eagle-emblem",
+        "description": "Наблюдайте и замечайте детали",
+        "bonuses": []
       },
       "color": "#22c55e",
       "colorName": "green",
