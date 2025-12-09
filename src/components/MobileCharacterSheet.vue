@@ -3,7 +3,7 @@
  * MobileCharacterSheet - мобильная версия листа персонажа
  * Адаптивный интерфейс с вкладками для разных секций
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, Teleport } from 'vue'
 import { Icon } from '@iconify/vue'
 import { storeToRefs } from 'pinia'
 import { useCharactersStore } from '@/stores/characters'
@@ -547,6 +547,7 @@ const deleteCharacter = () => {
         </div>
 
         <!-- Попап с деталями навыка -->
+        <Teleport to="body">
         <div v-if="selectedSkillData" class="skill-details-overlay" @click="closeSkillDetails">
           <div class="skill-details-card" @click.stop>
             <div class="skill-details-header" :style="{ borderColor: selectedSkillData.customColor || selectedSkillData.aspectColor }">
@@ -622,6 +623,7 @@ const deleteCharacter = () => {
             </div>
           </div>
         </div>
+        </Teleport>
 
         <!-- Блок выбора режима небоевых действий -->
         <div class="action-mode-section">
@@ -1235,7 +1237,7 @@ const deleteCharacter = () => {
   background: #1e293b;
   border-radius: 12px;
   width: calc(100vw - 32px);
-  max-width: 400px;
+  max-width: calc(100vw - 32px);
   margin-bottom: 20px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   display: flex;
