@@ -16,6 +16,7 @@ import BattleMap from '@/components/BattleMap.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import SplashOverlay from '@/components/SplashOverlay.vue'
 import MobileGameLayout from '@/components/MobileGameLayout.vue'
+import CharacterWizard from '@/components/CharacterWizard.vue'
 import { isMobileScreen, setupMobileViewport } from '@/utils/mobile'
 
 const route = useRoute()
@@ -56,6 +57,9 @@ const connectionError = ref('')
 // Мобильный интерфейс
 const isMobile = ref(isMobileScreen())
 const pendingAction = ref(null)
+
+// Модальное окно создания персонажа
+const showCharacterCreator = ref(false)
 
 // Выбранные объекты на карте (для мобильной инфокарточки)
 const selectedToken = ref(null)
@@ -407,7 +411,18 @@ const setupReactionListener = () => {
         @hex-selected="handleHexSelected"
         @hex-double-tap="handleHexDoubleTap"
         @action-target-selected="handleActionTargetSelected"
+        @create-character="showCharacterCreator = true"
       />
+      
+      <!-- Модальное окно создания персонажа -->
+      <Teleport to="body">
+        <div v-if="showCharacterCreator" class="character-creator-modal">
+          <CharacterWizard 
+            @close="showCharacterCreator = false"
+            @created="showCharacterCreator = false"
+          />
+        </div>
+      </Teleport>
     </template>
     
     <!-- Desktop Interface -->
@@ -474,3 +489,14 @@ const setupReactionListener = () => {
     <SplashOverlay />
   </div>
 </template>
+
+<style scoped>
+/* Модальное окно создания персонажа */
+.character-creator-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #0f172a;
+  overflow-y: auto;
+}
+</style>

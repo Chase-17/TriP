@@ -57,7 +57,8 @@ const emit = defineEmits([
   'token-selected',
   'hex-selected',
   'hex-double-tap',
-  'action-target-selected'
+  'action-target-selected',
+  'create-character'
 ])
 
 const charactersStore = useCharactersStore()
@@ -359,6 +360,7 @@ const selectCharacter = (charId) => {
             :embedded="true"
             :active-tab="activeSheetTab"
             @update:activeTab="activeSheetTab = $event"
+            @create-character="emit('create-character')"
           />
         </div>
         
@@ -488,7 +490,7 @@ const selectCharacter = (charId) => {
   top: 0;
   left: 0;
   right: 0;
-  height: 250px;
+  height: 200px;
   z-index: 50;
   background: rgba(15, 23, 42, 0.97);
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
@@ -745,6 +747,7 @@ const selectCharacter = (charId) => {
   background: rgba(15, 23, 42, 0.95);
   border-top: 1px solid rgba(148, 163, 184, 0.1);
   padding: 8px 12px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0));
   display: flex;
   align-items: center;
   touch-action: pan-y pinch-zoom;

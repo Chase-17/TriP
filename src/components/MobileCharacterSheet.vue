@@ -35,7 +35,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'switch-tab', 'update:activeTab'])
+const emit = defineEmits(['close', 'switch-tab', 'update:activeTab', 'create-character'])
 
 const charactersStore = useCharactersStore()
 const sessionStore = useSessionStore()
@@ -772,6 +772,10 @@ const deleteCharacter = () => {
     <div v-else class="empty-state">
       <Icon icon="mdi:account-off" class="empty-icon" />
       <p>Персонаж не выбран</p>
+      <button class="create-character-btn" @click="emit('create-character')">
+        <Icon icon="mdi:plus" />
+        <span>Создать персонажа</span>
+      </button>
     </div>
   </div>
 </template>
@@ -1216,21 +1220,22 @@ const deleteCharacter = () => {
 .skill-details-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  z-index: 1000;
-  padding: 10px;
-  padding-top: 260px;
+  z-index: 9999;
+  padding: 16px;
+  padding-top: 60px;
+  padding-bottom: 80px;
   overflow-y: auto;
 }
 
 .skill-details-card {
   background: #1e293b;
   border-radius: 12px;
-  width: 100%;
-  max-width: 500px;
+  width: calc(100vw - 32px);
+  max-width: 400px;
   margin-bottom: 20px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   display: flex;
@@ -2023,6 +2028,8 @@ const deleteCharacter = () => {
   align-items: center;
   justify-content: center;
   color: #64748b;
+  padding: 32px;
+  text-align: center;
 }
 
 .empty-icon {
@@ -2030,6 +2037,30 @@ const deleteCharacter = () => {
   height: 64px;
   margin-bottom: 16px;
   opacity: 0.5;
+}
+
+.create-character-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms;
+}
+
+.create-character-btn:active {
+  transform: scale(0.95);
+}
+
+.create-character-btn .iconify {
+  font-size: 20px;
 }
 
 /* Embedded режим - контент занимает всю высоту */
@@ -2041,7 +2072,7 @@ const deleteCharacter = () => {
 .mobile-character-sheet.embedded .sheet-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: 260px;
+  padding-top: 210px;
   height: 100%;
   box-sizing: border-box;
 }
