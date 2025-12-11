@@ -47,8 +47,8 @@ const currentCharacter = computed(() => props.character || activeCharacter.value
 
 // Вкладки внутри листа персонажа
 const sheetTabs = [
-  { id: 'main', label: 'Основное', icon: 'mdi:account' },
-  { id: 'items', label: 'Вещи', icon: 'mdi:bag-personal' },
+  { id: 'main', label: 'Личность', icon: 'mdi:account-heart' },
+  { id: 'items', label: 'Инвентарь', icon: 'mdi:backpack' },
   { id: 'social', label: 'Социум', icon: 'mdi:account-group' },
   { id: 'magic', label: 'Магия', icon: 'mdi:auto-fix' }
 ]
@@ -83,8 +83,17 @@ const actionModes = computed(() => {
   return aspects.value.filter(a => a.mode)
 })
 
-// Активный режим действий
-const activeMode = ref(null)
+// Активный режим действий (с сохранением в userStore)
+const activeMode = computed({
+  get: () => {
+    if (!currentCharacter.value?.id) return null
+    return userStore.getCharacterMode(currentCharacter.value.id)
+  },
+  set: (val) => {
+    if (!currentCharacter.value?.id) return
+    userStore.setCharacterMode(currentCharacter.value.id, val)
+  }
+})
 const showModeInfo = ref(false)
 const selectedModeDetails = ref(null)
 
@@ -647,12 +656,12 @@ const deleteCharacter = () => {
               :title="mode.mode.name"
             >
               <Icon :icon="mode.mode.icon" class="mode-icon" />
-              <button 
+              <span 
                 class="mode-detail-btn" 
                 @click.stop="showModeDetails(mode)"
               >
                 <Icon icon="mdi:help-circle-outline" />
-              </button>
+              </span>
             </button>
           </div>
         </div>

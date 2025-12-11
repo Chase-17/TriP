@@ -140,6 +140,13 @@ export const useCharactersStore = defineStore('characters', {
     },
     
     /**
+     * Получить персонажей по userId владельца
+     */
+    getCharactersByUserId: (state) => (userId) => {
+      return state.characters.filter(c => c.ownerId === userId && !c.isNpc)
+    },
+    
+    /**
      * Активный персонаж
      */
     activeCharacter: (state) => {

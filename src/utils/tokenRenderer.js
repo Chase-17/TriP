@@ -582,7 +582,8 @@ export const drawTokenOverlay = (ctx, token, options = {}) => {
     tokenSize = 48,
     isHovered = false,
     isSelected = false,
-    canSeeDefence = false
+    canSeeDefence = false,
+    facingOffset = 0 // Смещение направления для flat-top (90°) или pointy-top (0°)
   } = options
   
   const { character, pixelX, pixelY, facing = 0, meleeDefence, rangedDefence } = token
@@ -591,7 +592,7 @@ export const drawTokenOverlay = (ctx, token, options = {}) => {
   const cx = pixelX
   const cy = pixelY
   const portraitRadius = tokenSize / 2
-  const rotation = facing * 60
+  const rotation = facing * 30 + facingOffset // facing: 0-11, каждый шаг = 30°, + смещение для ориентации
   
   const shouldShowDefenceUI = (isHovered || isSelected) && canSeeDefence && (meleeDefence || rangedDefence)
   
@@ -635,7 +636,8 @@ export const drawToken = (ctx, token, options = {}) => {
     showFacing = true,
     isHovered = false,
     isSelected = false,
-    canSeeDefence = false // Может ли текущий игрок видеть защиту этого токена
+    canSeeDefence = false, // Может ли текущий игрок видеть защиту этого токена
+    facingOffset = 0 // Смещение направления для flat-top (90°) или pointy-top (0°)
   } = options
   
   const { character, pixelX, pixelY, facing = 0, meleeDefence, rangedDefence } = token
@@ -644,7 +646,12 @@ export const drawToken = (ctx, token, options = {}) => {
   const cx = pixelX
   const cy = pixelY
   const portraitRadius = tokenSize / 2
-  const rotation = facing * 60 // facing: 0-5, каждый шаг = 60°
+  const rotation = facing * 30 + facingOffset // facing: 0-11, каждый шаг = 30°, + смещение для ориентации
+  
+  // DEBUG
+  if (isSelected || isHovered) {
+    console.log(`[drawToken] ${character.name}: facing=${facing}, facingOffset=${facingOffset}, rotation=${rotation}`)
+  }
   
   // Получаем данные для ран
   const wounds = character.combat?.wounds
@@ -754,7 +761,8 @@ export const drawTokens = (ctx, tokens, options = {}) => {
     selectedTokenId = null,
     currentUserId = null,
     isMaster = false,
-    draggingTokenId = null
+    draggingTokenId = null,
+    facingOffset = 0
   } = options
   
   // Собираем информацию о токенах с их состояниями

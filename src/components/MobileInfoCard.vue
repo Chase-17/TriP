@@ -166,8 +166,11 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Icon } from '@iconify/vue'
 import { getPortraitUrl, loadImage, drawPortrait, drawScratches, drawLightWounds } from '@/utils/tokenRenderer'
 import { getDefenceData } from '@/utils/defence'
+import { useBattleMapStore } from '@/stores/battleMap'
 import diffsData from '@/data/diffs.json'
 import { calculateWoundSlots } from '@/utils/wounds'
+
+const battleMapStore = useBattleMapStore()
 
 const props = defineProps({
   selectedToken: {
@@ -552,6 +555,8 @@ const drawRangedDefenceSegment = (ctx, cx, cy, radius, segment, difficulty, rota
 
 // Отрисовка canvas
 const renderCanvas = async () => {
+  console.log('[MobileInfoCard] renderCanvas called, playerFacing:', props.playerFacing)
+  
   const canvas = defenceCanvas.value
   if (!canvas) return
   
@@ -614,8 +619,17 @@ const renderCanvas = async () => {
   
   if (!meleeDefence && !rangedDefence) return
   
-  // Facing приходит как 0-5, переводим в градусы (0-300)
-  const rotation = (props.playerFacing || 0) * 60
+  // Смещение для ориентации карты: flat-top = 90°, pointy-top = 0°
+  const activeMap = battleMapStore.maps.find(m => m.id === battleMapStore.activeMapId)
+  const isPointy = activeMap?.orientation === 'pointy'
+  const facingOffset = isPointy ? 0 : 90
+  
+  // Facing приходит как 0-11, переводим в градусы + смещение
+  const rotation = (props.playerFacing || 0) * 30 + facingOffset
+  
+  // DEBUG
+  console.log(`[MobileInfoCard] playerFacing=${props.playerFacing}, facingOffset=${facingOffset}, rotation=${rotation}, isPointy=${isPointy}`)
+  
   const meleeRadius = portraitRadius + 14 // Отступ для царапин
   const rangedRadius = meleeRadius + 6    // Дуги снаружи гекса
   

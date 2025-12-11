@@ -549,16 +549,27 @@ export const useBattleMapStore = defineStore('battleMap', {
      */
     rotateToken(mapId, q, r, newFacing) {
       const map = this.maps.find(m => m.id === mapId)
-      if (!map) return false
+      if (!map) {
+        console.warn('[BattleMap] rotateToken: map not found', mapId)
+        return false
+      }
       
       const tokensLayer = map.layers.find(l => l.type === LAYER_TYPES.TOKENS)
-      if (!tokensLayer) return false
+      if (!tokensLayer) {
+        console.warn('[BattleMap] rotateToken: tokens layer not found')
+        return false
+      }
       
       const key = `${q},${r}`
       const tokenData = tokensLayer.data.get(key)
-      if (!tokenData) return false
+      if (!tokenData) {
+        console.warn('[BattleMap] rotateToken: token not found at', key)
+        return false
+      }
       
-      tokenData.facing = ((newFacing % 6) + 6) % 6 // Нормализуем 0-5
+      const oldFacing = tokenData.facing
+      tokenData.facing = ((newFacing % 12) + 12) % 12 // Нормализуем 0-11 (12 направлений)
+      console.log('[BattleMap] rotateToken: changed facing from', oldFacing, 'to', tokenData.facing, 'at', key)
       map.updatedAt = Date.now()
       return true
     },

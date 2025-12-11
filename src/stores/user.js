@@ -19,6 +19,14 @@ export const useUserStore = defineStore('user', {
     // UI-состояния
     currentView: 'chat', // chat | character-sheet | battle-map
     showCharacterWizard: false, // Открыт ли визард создания персонажа
+    mobileActiveScreen: 'battle-map', // Активный экран на мобильной версии
+    
+    // Предпочтение layout: 'auto' (по размеру экрана), 'mobile', 'desktop'
+    layoutPreference: 'auto',
+    
+    // Режимы действий по персонажам
+    // Формат: { [characterId]: 'modeId' }
+    characterModes: {},
     
     // Предпочтения навыков по персонажам
     // Формат: { [characterId]: { expandedSkills: ['skillId1', 'skillId2'], allExpanded: false } }
@@ -30,7 +38,7 @@ export const useUserStore = defineStore('user', {
   
   persist: {
     key: 'trip-user-v2',
-    paths: ['userId', 'nickname', 'avatar', 'currentView', 'showCharacterWizard', 'skillPreferences']
+    paths: ['userId', 'nickname', 'avatar', 'currentView', 'showCharacterWizard', 'mobileActiveScreen', 'layoutPreference', 'characterModes', 'skillPreferences']
   },
   
   getters: {
@@ -87,6 +95,26 @@ export const useUserStore = defineStore('user', {
     
     setCurrentView(view) {
       this.currentView = view
+    },
+    
+    setMobileActiveScreen(screen) {
+      this.mobileActiveScreen = screen
+    },
+    
+    // === Layout preference ===
+    setLayoutPreference(preference) {
+      if (['auto', 'mobile', 'desktop'].includes(preference)) {
+        this.layoutPreference = preference
+      }
+    },
+
+    // === Режимы действий ===
+    getCharacterMode(characterId) {
+      return this.characterModes[characterId] || null
+    },
+    
+    setCharacterMode(characterId, modeId) {
+      this.characterModes[characterId] = modeId
     },
     
     openCharacterWizard() {

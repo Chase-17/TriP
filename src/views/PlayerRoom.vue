@@ -10,6 +10,7 @@ import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
 import { useCharactersStore } from '@/stores/characters'
 import { useBattleMapStore } from '@/stores/battleMap'
+import { useSceneLogStore } from '@/stores/sceneLog'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
@@ -25,6 +26,7 @@ const session = useSessionStore()
 const userStore = useUserStore()
 const charactersStore = useCharactersStore()
 const battleMapStore = useBattleMapStore()
+const sceneLogStore = useSceneLogStore()
 
 const { roomId, status, connections } = storeToRefs(session)
 const { nickname, avatar, currentView } = storeToRefs(userStore)
@@ -71,9 +73,11 @@ const reactionPrompt = ref(null)
 // Направление персонажа игрока
 const playerFacing = computed(() => {
   if (!playerCharacter.value) return 0
-  // Получаем токен персонажа из карты
-  const token = battleMapStore.getTokenByCharacterId?.(playerCharacter.value.id)
-  return token?.facing || 0
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return 0
+  // Получаем позицию токена персонажа из карты (включает facing)
+  const tokenPos = battleMapStore.findTokenPosition(mapId, playerCharacter.value.id)
+  return tokenPos?.facing || 0
 })
 
 // Позиция токена игрока на карте
@@ -186,14 +190,14 @@ const handleConfirmAction = () => {
   }
 }
 
-const movePlayerCharacter = (targetHex) => {
+const movePlayerCharacter = (targetHex, facing = null) => {
   const character = playerCharacter.value
   if (!character) {
     console.warn('Персонаж игрока не найден')
     return
   }
   
-  console.log(`Перемещаем персонажа ${character.name} на гекс q:${targetHex.q}, r:${targetHex.r}`)
+  console.log(`Перемещаем персонажа ${character.name} на гекс q:${targetHex.q}, r:${targetHex.r}, facing:${facing}`)
   
   // Получаем ID активной карты
   const mapId = battleMapStore.activeMapId
@@ -209,7 +213,7 @@ const movePlayerCharacter = (targetHex) => {
   if (!moved) {
     // Если токен не найден, размещаем его впервые
     console.log('Токен не найден на карте, размещаем впервые')
-    const placed = battleMapStore.placeToken(mapId, character.id, targetHex.q, targetHex.r)
+    const placed = battleMapStore.placeToken(mapId, character.id, targetHex.q, targetHex.r, facing || 0)
     if (placed) {
       console.log('Токен успешно размещен на карте')
     } else {
@@ -217,6 +221,13 @@ const movePlayerCharacter = (targetHex) => {
     }
   } else {
     console.log('Токен перемещен на существующей карте')
+    // Если указан facing - обновляем его
+    if (facing !== null) {
+      const position = battleMapStore.findTokenPosition(mapId, character.id)
+      if (position) {
+        battleMapStore.rotateToken(mapId, position.q, position.r, facing)
+      }
+    }
   }
   
   // Также обновляем позицию в charactersStore для синхронизации
@@ -235,7 +246,7 @@ const movePlayerCharacter = (targetHex) => {
   })
   if (isConnectedToMaster) {
     console.log('Отправляем перемещение мастеру...')
-    session.broadcastCharacterMove(character.id, targetHex.q, targetHex.r)
+    session.broadcastCharacterMove(character.id, targetHex.q, targetHex.r, facing)
   }
 }
 
@@ -308,6 +319,70 @@ const handleHexDoubleTap = (hex) => {
   selectedHex.value = null
 }
 
+// Обработчик long press - перемещение с выбором направления (промежуточный шаг)
+const handleHexLongPressMove = (data) => {
+  if (!data?.hex) return
+  if (!isPlayerTurn.value) return
+  console.log('Long press move - перемещение с выбором направления:', data)
+  // Перемещаем персонажа с сохранением текущего направления
+  // Финальное направление будет установлено в handleHexLongPressConfirm
+  movePlayerCharacter(data.hex, data.facing)
+}
+
+// Обработчик подтверждения направления после long press
+const handleHexLongPressConfirm = (data) => {
+  if (!data?.hex) return
+  if (!isPlayerTurn.value) return
+  console.log('Long press confirm - финальное направление:', data)
+  
+  // Обновляем направление токена
+  const character = playerCharacter.value
+  if (!character) return
+  
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return
+  
+  const position = battleMapStore.findTokenPosition(mapId, character.id)
+  if (position) {
+    battleMapStore.rotateToken(mapId, position.q, position.r, data.facing)
+    console.log(`Направление персонажа обновлено на ${data.facing}`)
+    
+    // Отправляем обновление мастеру
+    const isConnectedToMaster = session.role === 'player' && session.status === 'in-room'
+    if (isConnectedToMaster) {
+      session.broadcastCharacterMove(character.id, position.q, position.r, data.facing)
+    }
+  }
+  
+  // Сбрасываем выбранный гекс
+  selectedHex.value = null
+}
+
+// Обработчик поворота токена на месте (long press на своём токене)
+const handleTokenRotate = (data) => {
+  if (!data) return
+  if (!isPlayerTurn.value) return
+  console.log('Token rotate - поворот на месте:', data)
+  
+  const character = playerCharacter.value
+  if (!character) return
+  
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return
+  
+  const position = battleMapStore.findTokenPosition(mapId, character.id)
+  if (position) {
+    battleMapStore.rotateToken(mapId, position.q, position.r, data.facing)
+    console.log(`Направление персонажа обновлено на ${data.facing}`)
+    
+    // Отправляем обновление мастеру
+    const isConnectedToMaster = session.role === 'player' && session.status === 'in-room'
+    if (isConnectedToMaster) {
+      session.broadcastCharacterMove(character.id, position.q, position.r, data.facing)
+    }
+  }
+}
+
 // Обработчик смены снаряжения
 const handleSwitchEquipment = () => {
   // TODO: открыть модалку смены снаряжения
@@ -353,6 +428,37 @@ const setupReactionListener = () => {
       description: payload.description || 'Можете использовать реакцию',
       timeoutSeconds: payload.timeoutSeconds || 5,
       startedAt: Date.now()
+    }
+  })
+  
+  // Слушатель событий сцены от мастера
+  session.onMessage('scene-event', (payload) => {
+    console.log('Получено событие сцены:', payload)
+    if (payload.event) {
+      sceneLogStore.handleIncomingEvent(payload.event)
+    }
+  })
+  
+  // Слушатель синхронизации всех событий сцены (при подключении)
+  session.onMessage('scene-sync', (payload) => {
+    console.log('Получена синхронизация событий сцены:', payload.events?.length || 0, 'событий')
+    if (payload.events && Array.isArray(payload.events)) {
+      sceneLogStore.syncEvents(payload.events)
+    }
+    if (payload.currentImage) {
+      sceneLogStore.setSceneImage(
+        payload.currentImage.url,
+        payload.currentImage.description,
+        payload.currentImage.sentBy
+      )
+    }
+  })
+  
+  // Слушатель скрытия события от мастера
+  session.onMessage('scene-event-hide', (payload) => {
+    console.log('Мастер скрыл событие:', payload.eventId)
+    if (payload.eventId) {
+      sceneLogStore.removeEvent(payload.eventId)
     }
   })
 }
@@ -410,6 +516,9 @@ const setupReactionListener = () => {
         @token-selected="handleTokenSelected"
         @hex-selected="handleHexSelected"
         @hex-double-tap="handleHexDoubleTap"
+        @hex-long-press-move="handleHexLongPressMove"
+        @hex-long-press-confirm="handleHexLongPressConfirm"
+        @token-rotate="handleTokenRotate"
         @action-target-selected="handleActionTargetSelected"
         @create-character="showCharacterCreator = true"
       />

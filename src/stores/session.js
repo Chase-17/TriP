@@ -3,6 +3,7 @@ import Peer from 'peerjs'
 import { useUserStore } from './user'
 import { useBattleMapStore } from './battleMap'
 import { useCharactersStore } from './characters'
+import { useSceneLogStore } from './sceneLog'
 
 const peerConfig = {
   host: '0.peerjs.com',
@@ -174,6 +175,26 @@ export const useSessionStore = defineStore('session', {
           }
         })
       }
+    },
+    
+    // Отправка данных мастеру (для игрока)
+    sendToMaster(payload) {
+      if (!this.activeConnection?.open) {
+        console.warn('Нет активного соединения для отправки мастеру')
+        return false
+      }
+      
+      const userStore = useUserStore()
+      const fullPayload = {
+        id: createId(),
+        ...payload,
+        senderId: userStore.userId,
+        time: Date.now()
+      }
+      
+      this.activeConnection.send(fullPayload)
+      console.log('Отправлено мастеру:', fullPayload)
+      return true
     },
     
     // Отправка ответа на реакцию мастеру (для игрока)
@@ -420,6 +441,7 @@ export const useSessionStore = defineStore('session', {
         setTimeout(() => {
           this.sendMapToConnection(conn)
           this.sendCharactersToConnection(conn)
+          this.sendSceneEventsToConnection(conn, entry.userId)
         }, 100)
       })
       
@@ -438,6 +460,17 @@ export const useSessionStore = defineStore('session', {
           // Ответ игрока на предложение реакции
           console.log('Получен ответ на реакцию от игрока:', payload)
           this.triggerMessageHandlers('reaction-response', { ...payload, playerPeerId: conn.peer })
+        } else if (payload.type === 'skill-check-result') {
+          // Результат проверки навыка от игрока
+          console.log('[Session Master] Получен результат проверки:', payload)
+          this.triggerMessageHandlers('skill-check-result', { ...payload, playerPeerId: conn.peer })
+          // Пересылаем всем остальным игрокам чтобы они видели результат
+          this.broadcastPayload(payload, conn.peer)
+        } else if (payload.type === 'scene-event') {
+          // Событие сцены - передаём в обработчики (например, результат проверки от игрока)
+          this.triggerMessageHandlers('scene-event', payload)
+          // Пересылаем всем остальным игрокам
+          this.broadcastPayload(payload, conn.peer)
         } else if (payload.type === 'chat') {
           this.addMessage(payload)
           this.broadcastPayload(payload, conn.peer)
@@ -558,6 +591,12 @@ export const useSessionStore = defineStore('session', {
           this.handleMapSync(payload)
         } else if (payload.type === 'character-sync') {
           this.handleCharacterSync(payload)
+        } else if (payload.type === 'scene-sync') {
+          // Синхронизация всех событий сцены при подключении
+          this.triggerMessageHandlers('scene-sync', payload)
+        } else if (payload.type === 'scene-event-hide') {
+          // Мастер скрывает событие от этого игрока
+          this.triggerMessageHandlers('scene-event-hide', payload)
         } else if (payload.type === 'splash') {
           this.handleSplash(payload)
         } else if (payload.type === 'action-error') {
@@ -566,6 +605,9 @@ export const useSessionStore = defineStore('session', {
         } else if (payload.type === 'reaction-prompt') {
           // Предложение реакции от мастера
           this.triggerMessageHandlers('reaction-prompt', payload)
+        } else if (payload.type === 'scene-event') {
+          // Событие сцены от мастера или другого игрока
+          this.triggerMessageHandlers('scene-event', payload)
         } else if (payload.type === 'chat') {
           if (!this.masterProfile && payload.userId) {
             this.masterProfile = {
@@ -760,6 +802,43 @@ export const useSessionStore = defineStore('session', {
     },
     
     /**
+     * Отправить события сцены одному подключению (при подключении/переподключении)
+     * Фильтрует события для этого конкретного пользователя
+     */
+    sendSceneEventsToConnection(conn, userId) {
+      if (!conn?.open) {
+        console.warn('[Session] sendSceneEventsToConnection: connection not open')
+        return
+      }
+      
+      const sceneLogStore = useSceneLogStore()
+      
+      // Фильтруем события, которые должны быть видны этому игроку
+      const eventsForPlayer = sceneLogStore.events.filter(event => {
+        // Секретные события только для целевого пользователя
+        if (event.isSecret && event.targetUserId !== userId && event.targetUserId !== 'all') {
+          return false
+        }
+        // События с targetUserIds - только если игрок в списке
+        if (event.targetUserIds && Array.isArray(event.targetUserIds) && !event.targetUserIds.includes(userId)) {
+          return false
+        }
+        return true
+      })
+      
+      console.log('[Session] Sending scene events to player:', eventsForPlayer.length)
+      
+      // Отправляем события с пометкой о синхронизации
+      conn.send({
+        id: createId(),
+        type: 'scene-sync',
+        events: eventsForPlayer,
+        currentImage: sceneLogStore.currentImage,
+        time: Date.now()
+      })
+    },
+    
+    /**
      * Отправить текущую карту всем игрокам
      */
     broadcastMap() {
@@ -866,7 +945,7 @@ export const useSessionStore = defineStore('session', {
     /**
      * Игрок запрашивает перемещение своего персонажа
      */
-    broadcastCharacterMove(characterId, q, r) {
+    broadcastCharacterMove(characterId, q, r, facing = null) {
       if (this.role !== 'player') {
         console.warn('[Session] broadcastCharacterMove: not a player')
         return
@@ -885,6 +964,7 @@ export const useSessionStore = defineStore('session', {
         characterId,
         q,
         r,
+        facing,
         userId: userStore.userId,
         time: Date.now()
       }
@@ -1169,9 +1249,14 @@ export const useSessionStore = defineStore('session', {
         }
         
         const moved = battleMapStore.moveTokenByCharacterId(mapId, payload.characterId, payload.q, payload.r)
+        console.log('[Session] moveTokenByCharacterId result:', moved, 'facing:', payload.facing)
         if (!moved) {
           // Если токен не найден, размещаем впервые
-          battleMapStore.placeToken(mapId, payload.characterId, payload.q, payload.r)
+          battleMapStore.placeToken(mapId, payload.characterId, payload.q, payload.r, payload.facing || 0)
+        } else if (payload.facing !== null && payload.facing !== undefined) {
+          // Если указан facing - обновляем его
+          const rotated = battleMapStore.rotateToken(mapId, payload.q, payload.r, payload.facing)
+          console.log('[Session] rotateToken result:', rotated)
         }
         
         // Обновляем позицию в charactersStore
@@ -1181,7 +1266,7 @@ export const useSessionStore = defineStore('session', {
           charactersStore.moveOnMap(payload.characterId, payload.q, payload.r)
         }
         
-        console.log('[Session] Token moved by player:', payload.characterId, 'to', payload.q, payload.r)
+        console.log('[Session] Token moved by player:', payload.characterId, 'to', payload.q, payload.r, 'facing:', payload.facing)
         
         // Отправляем обновление карты и персонажей всем игрокам
         this.broadcastMap()

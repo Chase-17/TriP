@@ -9,11 +9,14 @@ import { storeToRefs } from 'pinia'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
 import { useBattleMapStore } from '@/stores/battleMap'
+import { useSceneLogStore } from '@/stores/sceneLog'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
 import MasterTools from '@/components/MasterTools.vue'
 import MasterCharactersPanel from '@/components/MasterCharactersPanel.vue'
+import MasterSceneTools from '@/components/MasterSceneTools.vue'
+import SceneLog from '@/components/SceneLog.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const route = useRoute()
@@ -21,6 +24,7 @@ const router = useRouter()
 const session = useSessionStore()
 const userStore = useUserStore()
 const battleMapStore = useBattleMapStore()
+const sceneLogStore = useSceneLogStore()
 
 const { roomId, status, connections } = storeToRefs(session)
 const { nickname, avatar } = storeToRefs(userStore)
@@ -58,6 +62,7 @@ const codeCopied = ref(false)
 
 const navItems = [
   { id: 'battle-map', label: 'Карта', icon: '🗺️' },
+  { id: 'scene', label: 'Сцена', icon: '🎭' },
   { id: 'master-tools', label: 'Инструменты', icon: '⚙️' },
   { id: 'chat', label: 'Чат', icon: '💬' },
   { id: 'characters', label: 'Персонажи', icon: '👥' }
@@ -78,6 +83,29 @@ onMounted(async () => {
   // Создаём комнату как мастер (хост)
   try {
     await session.createRoom()
+    
+    // Слушатель событий сцены от игроков (результаты проверок и т.д.)
+    session.onMessage('scene-event', (payload) => {
+      console.log('Получено событие сцены от игрока:', payload)
+      if (payload.event) {
+        sceneLogStore.handleIncomingEvent(payload.event)
+      }
+    })
+    
+    // Обработка результатов проверки навыков от игроков
+    session.onMessage('skill-check-result', (payload) => {
+      console.log('Получен результат проверки от игрока:', payload)
+      // Обновляем событие в логе мастера
+      if (payload.eventId && payload.result) {
+        sceneLogStore.updateEvent(payload.eventId, {
+          completed: true,
+          result: payload.result,
+          completedBy: payload.senderId,
+          completedAt: Date.now(),
+          characterName: payload.characterName
+        })
+      }
+    })
   } catch (error) {
     console.error('Ошибка создания комнаты:', error)
   }
@@ -86,6 +114,17 @@ onMounted(async () => {
 onUnmounted(() => {
   session.leaveRoom()
 })
+
+// Функции для работы с изображениями сцены
+const viewSceneImage = (event) => {
+  if (event && event.url) {
+    sceneLogStore.setSceneImage(event.url, event.description, event.senderUserId)
+  }
+}
+
+const hideSceneImage = () => {
+  sceneLogStore.clearSceneImage()
+}
 
 const setView = (view) => {
   activeView.value = view
@@ -198,6 +237,20 @@ const playerCount = computed(() => players.value.length)
       <!-- Content -->
       <main class="flex-1 overflow-hidden">
         <BattleMap v-show="activeView === 'battle-map'" />
+        
+        <!-- Scene view: Tools + Log side by side -->
+        <div v-show="activeView === 'scene'" class="h-full flex">
+          <div class="w-[400px] flex-shrink-0 border-r border-white/10 overflow-y-auto p-4">
+            <MasterSceneTools />
+          </div>
+          <div class="flex-1 overflow-hidden">
+            <SceneLog 
+              @view-image="viewSceneImage"
+              @hide-image="hideSceneImage"
+            />
+          </div>
+        </div>
+        
         <MasterTools v-show="activeView === 'master-tools'" />
         <ChatPanel v-show="activeView === 'chat'" />
         

@@ -7,15 +7,16 @@
  * - Панель действий (90px) - действия текущего экрана
  * - Навбар (фиксированный) - переключение экранов
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Icon } from '@iconify/vue'
 import { storeToRefs } from 'pinia'
 import { useCharactersStore } from '@/stores/characters'
 import { useBattleMapStore } from '@/stores/battleMap'
 import { useUserStore } from '@/stores/user'
+import { useSceneLogStore, SceneFilters } from '@/stores/sceneLog'
 import MobileInfoCard from './MobileInfoCard.vue'
 import BattleMap from './BattleMap.vue'
-import ChatPanel from './ChatPanel.vue'
+import SceneLog from './SceneLog.vue'
 import MobileCharacterSheet from './MobileCharacterSheet.vue'
 
 const props = defineProps({
@@ -57,6 +58,9 @@ const emit = defineEmits([
   'token-selected',
   'hex-selected',
   'hex-double-tap',
+  'hex-long-press-move',    // Перемещение с long press (выбор направления)
+  'hex-long-press-confirm', // Подтверждение направления
+  'token-rotate',           // Поворот токена на месте
   'action-target-selected',
   'create-character'
 ])
@@ -64,18 +68,20 @@ const emit = defineEmits([
 const charactersStore = useCharactersStore()
 const battleMapStore = useBattleMapStore()
 const userStore = useUserStore()
+const sceneLogStore = useSceneLogStore()
 
 const { myCharacters, activeCharacter, activeCharacterId } = storeToRefs(charactersStore)
+const { activeFilter, hasActiveImage, currentImage } = storeToRefs(sceneLogStore)
 
 // Основные экраны (порядок важен для свайпа)
 const screens = ['battle-map', 'character-sheet', 'chat']
-const activeScreen = ref('battle-map')
+const activeScreen = ref(userStore.mobileActiveScreen || 'battle-map')
 const screenIndex = computed(() => screens.indexOf(activeScreen.value))
 
 // Вкладки листа персонажа
 const sheetTabs = [
-  { id: 'main', label: 'Основное', icon: 'mdi:account' },
-  { id: 'items', label: 'Вещи', icon: 'mdi:bag-personal' },
+  { id: 'main', label: 'Личность', icon: 'mdi:account-heart' },
+  { id: 'items', label: 'Инвентарь', icon: 'mdi:backpack' },
   { id: 'social', label: 'Социум', icon: 'mdi:account-group' },
   { id: 'magic', label: 'Магия', icon: 'mdi:auto-fix' }
 ]
@@ -85,12 +91,89 @@ const activeSheetTab = ref('main')
 const navItems = [
   { id: 'battle-map', label: 'Карта', icon: 'mdi:map' },
   { id: 'character-sheet', label: 'Персонаж', icon: 'mdi:account' },
-  { id: 'chat', label: 'Чат', icon: 'mdi:chat' }
+  { id: 'chat', label: 'Сцена', icon: 'mdi:drama-masks' }
 ]
 
-// UI состояние
-const infoCardCollapsed = ref(false)
+// Фильтры для экрана сцены
+const sceneFilterOptions = [
+  { id: SceneFilters.ALL, label: 'Всё', icon: 'mdi:format-list-bulleted' },
+  { id: SceneFilters.CHECKS, label: 'Проверки', icon: 'mdi:dice-d20' },
+  { id: SceneFilters.COMBAT, label: 'Бой', icon: 'mdi:sword-cross' },
+  { id: SceneFilters.QUESTS, label: 'Квесты', icon: 'mdi:map-marker-star' },
+  { id: SceneFilters.ITEMS, label: 'Вещи', icon: 'mdi:treasure-chest' },
+]
+
+// UI состояние - раздельная свёрнутость для каждого экрана
+const infoPanelCollapsedMap = ref({
+  'battle-map': false,
+  'character-sheet': false,
+  'chat': false
+})
+
+// Текущее состояние свёрнутости зависит от активного экрана
+const infoCardCollapsed = computed({
+  get: () => infoPanelCollapsedMap.value[activeScreen.value] ?? false,
+  set: (val) => { infoPanelCollapsedMap.value[activeScreen.value] = val }
+})
+
 const menuOpen = ref(false)
+
+// Автосворачивание инфопанели для экрана сцены
+const sceneInfoPanelTimer = ref(null)
+const SCENE_INFO_PANEL_TIMEOUT = 10000 // 10 секунд
+
+// Открыть инфопанель сцены и показать картинку из события
+const openSceneInfoPanel = (event) => {
+  // Если передано событие с картинкой - устанавливаем её
+  if (event && event.url) {
+    sceneLogStore.setSceneImage(event.url, event.description, event.senderUserId)
+  }
+  infoPanelCollapsedMap.value['chat'] = false
+  sceneLogStore.touchInfoPanel()
+  resetSceneInfoPanelTimer()
+}
+
+// Скрыть изображение сцены и свернуть инфопанель
+const hideSceneImage = () => {
+  sceneLogStore.clearSceneImage()
+  infoPanelCollapsedMap.value['chat'] = true
+}
+
+const touchSceneInfoPanel = () => {
+  sceneLogStore.touchInfoPanel()
+  infoPanelCollapsedMap.value['chat'] = false
+  resetSceneInfoPanelTimer()
+}
+
+const resetSceneInfoPanelTimer = () => {
+  if (sceneInfoPanelTimer.value) {
+    clearTimeout(sceneInfoPanelTimer.value)
+  }
+  if (activeScreen.value === 'chat') {
+    sceneInfoPanelTimer.value = setTimeout(() => {
+      infoCardCollapsed.value = true
+    }, SCENE_INFO_PANEL_TIMEOUT)
+  }
+}
+
+// Следим за сменой экрана
+watch(activeScreen, (newScreen) => {
+  if (newScreen === 'chat') {
+    resetSceneInfoPanelTimer()
+  } else {
+    if (sceneInfoPanelTimer.value) {
+      clearTimeout(sceneInfoPanelTimer.value)
+      sceneInfoPanelTimer.value = null
+    }
+  }
+})
+
+// Очистка таймера при размонтировании
+onUnmounted(() => {
+  if (sceneInfoPanelTimer.value) {
+    clearTimeout(sceneInfoPanelTimer.value)
+  }
+})
 
 // Свайп для переключения экранов
 const swipeState = ref({
@@ -141,10 +224,12 @@ const onNavTouchEnd = () => {
     if (dx > 0 && currentIdx > 0) {
       // Свайп вправо - предыдущий экран
       activeScreen.value = screens[currentIdx - 1]
+      userStore.setMobileActiveScreen(activeScreen.value)
       emit('set-view', screens[currentIdx - 1])
     } else if (dx < 0 && currentIdx < screens.length - 1) {
       // Свайп влево - следующий экран
       activeScreen.value = screens[currentIdx + 1]
+      userStore.setMobileActiveScreen(activeScreen.value)
       emit('set-view', screens[currentIdx + 1])
     }
   }
@@ -154,6 +239,7 @@ const onNavTouchEnd = () => {
 
 const selectScreen = (screenId) => {
   activeScreen.value = screenId
+  userStore.setMobileActiveScreen(screenId)
   emit('set-view', screenId)
 }
 
@@ -209,6 +295,21 @@ const handleHexSelected = (hex) => {
 
 const handleHexDoubleTap = (hex) => {
   emit('hex-double-tap', hex)
+}
+
+const handleHexLongPressMove = (data) => {
+  // Перемещение с long press - персонаж уже перемещён, ждём выбор направления
+  emit('hex-long-press-move', data)
+}
+
+const handleHexLongPressConfirm = (data) => {
+  // Подтверждение направления после long press
+  emit('hex-long-press-confirm', data)
+}
+
+const handleTokenRotate = (data) => {
+  // Поворот токена на месте (long press на своём токене)
+  emit('token-rotate', data)
 }
 
 const handleActionTargetSelected = (target) => {
@@ -270,7 +371,11 @@ const selectCharacter = (charId) => {
     <!-- ИНФОПАНЕЛЬ (overlay) -->
     <div 
       class="info-panel-overlay" 
-      :class="{ collapsed: infoCardCollapsed }"
+      :class="{ 
+        collapsed: infoCardCollapsed,
+        'scene-mode': infoPanelMode === 'chat',
+        'has-image': infoPanelMode === 'chat' && hasActiveImage
+      }"
     >
       <!-- Режим карты - инфокарточка -->
       <template v-if="infoPanelMode === 'map'">
@@ -306,27 +411,50 @@ const selectCharacter = (charId) => {
         />
       </template>
       
-      <!-- Режим чата - заголовок чата -->
+      <!-- Режим чата/сцены - изображение сцены или заголовок -->
       <template v-else>
-        <div class="info-panel-content" @click="toggleInfoPanel">
-          <!-- Свёрнутое состояние -->
-          <div v-if="infoCardCollapsed" class="collapsed-header">
-            <Icon icon="mdi:chat" class="collapsed-chat-icon" />
-            <span class="collapsed-name">Игровой чат</span>
-            <Icon icon="mdi:chevron-down" class="collapse-icon" />
-          </div>
+        <div class="info-panel-content scene-info" @click="touchSceneInfoPanel">
+          <!-- Если есть активное изображение сцены -->
+          <template v-if="hasActiveImage && currentImage">
+            <!-- Свёрнутое состояние с превью -->
+            <div v-if="infoCardCollapsed" class="collapsed-header scene-image-preview">
+              <img :src="currentImage.url" :alt="currentImage.description" class="preview-thumbnail" />
+              <span class="collapsed-name">{{ currentImage.description || 'Изображение сцены' }}</span>
+              <Icon icon="mdi:chevron-down" class="collapse-icon" />
+            </div>
+            
+            <!-- Развёрнутое состояние с полным изображением -->
+            <template v-else>
+              <div class="panel-header">
+                <button class="collapse-btn" @click.stop="toggleInfoPanel">
+                  <Icon icon="mdi:chevron-up" />
+                </button>
+                <span class="panel-title">{{ currentImage.description || 'Сцена' }}</span>
+              </div>
+              <div class="scene-image-container" @click.stop @touchstart="touchSceneInfoPanel">
+                <img :src="currentImage.url" :alt="currentImage.description" class="scene-full-image" />
+              </div>
+            </template>
+          </template>
           
-          <!-- Развёрнутое состояние -->
+          <!-- Нет изображения - показываем заголовок сцены -->
           <template v-else>
-            <div class="panel-header">
-              <button class="collapse-btn" @click.stop="toggleInfoPanel">
-                <Icon icon="mdi:chevron-up" />
-              </button>
-              <span class="panel-title">Игровой чат</span>
+            <div v-if="infoCardCollapsed" class="collapsed-header">
+              <Icon icon="mdi:drama-masks" class="collapsed-chat-icon" />
+              <span class="collapsed-name">Сцена</span>
+              <Icon icon="mdi:chevron-down" class="collapse-icon" />
             </div>
-            <div class="chat-info-expanded" @click.stop>
-              <p class="chat-hint">Общайтесь с другими игроками и мастером</p>
-            </div>
+            <template v-else>
+              <div class="panel-header">
+                <button class="collapse-btn" @click.stop="toggleInfoPanel">
+                  <Icon icon="mdi:chevron-up" />
+                </button>
+                <span class="panel-title">Сцена</span>
+              </div>
+              <div class="chat-info-expanded" @click.stop @touchstart="touchSceneInfoPanel">
+                <p class="chat-hint">Лог событий, проверки и квесты</p>
+              </div>
+            </template>
           </template>
         </div>
       </template>
@@ -351,6 +479,9 @@ const selectCharacter = (charId) => {
             @token-selected="handleTokenSelected"
             @hex-selected="handleHexSelected"
             @hex-double-tap="handleHexDoubleTap"
+            @hex-long-press-move="handleHexLongPressMove"
+            @hex-long-press-confirm="handleHexLongPressConfirm"
+            @token-rotate="handleTokenRotate"
           />
         </div>
         
@@ -364,9 +495,14 @@ const selectCharacter = (charId) => {
           />
         </div>
         
-        <!-- Экран: Чат -->
+        <!-- Экран: Сцена -->
         <div class="screen screen-chat">
-          <ChatPanel />
+          <SceneLog 
+            @go-to-battle="selectScreen('battle-map')"
+            @create-character="emit('create-character')"
+            @view-image="openSceneInfoPanel"
+            @hide-image="hideSceneImage"
+          />
         </div>
       </div>
     </div>
@@ -423,10 +559,19 @@ const selectCharacter = (charId) => {
         </div>
       </template>
       
-      <!-- Для чата - поле ввода будет внутри ChatPanel -->
+      <!-- Для сцены - фильтры событий -->
       <template v-else>
-        <div class="chat-actions">
-          <span class="chat-hint-text">Используйте поле ввода внизу чата</span>
+        <div class="scene-filters">
+          <button
+            v-for="filter in sceneFilterOptions"
+            :key="filter.id"
+            class="scene-filter-btn"
+            :class="{ active: activeFilter === filter.id }"
+            @click="sceneLogStore.setFilter(filter.id)"
+          >
+            <Icon :icon="filter.icon" class="filter-icon" />
+            <span class="filter-label">{{ filter.label }}</span>
+          </button>
         </div>
       </template>
     </div>
@@ -496,13 +641,19 @@ const selectCharacter = (charId) => {
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
   display: flex;
   flex-direction: column;
-  transition: height 250ms ease-out;
+  transition: height 250ms ease-out, max-height 250ms ease-out;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .info-panel-overlay.collapsed {
   height: 56px;
+}
+
+/* Режим сцены с картинкой - динамическая высота */
+.info-panel-overlay.scene-mode.has-image:not(.collapsed) {
+  height: auto;
+  max-height: 70vh;
 }
 
 /* Контент инфопанели */
@@ -605,6 +756,38 @@ const selectCharacter = (charId) => {
   font-size: 14px;
   color: #64748b;
   text-align: center;
+}
+
+/* === Изображение сцены в инфопанели === */
+.scene-info {
+  background: #0f172a;
+}
+
+.scene-image-preview {
+  gap: 8px;
+}
+
+.preview-thumbnail {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.scene-image-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0;
+}
+
+.scene-full-image {
+  width: 100%;
+  max-height: calc(70vh - 48px);
+  object-fit: contain;
 }
 
 /* Панель персонажа */
@@ -885,6 +1068,51 @@ const selectCharacter = (charId) => {
 .chat-hint-text {
   font-size: 13px;
   color: #64748b;
+}
+
+/* Фильтры сцены */
+.scene-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.scene-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.scene-filter-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scene-filter-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.scene-filter-btn .filter-icon {
+  font-size: 18px;
+}
+
+.scene-filter-btn .filter-label {
+  font-size: 10px;
+  font-weight: 500;
 }
 
 /* НАВБАР */
