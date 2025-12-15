@@ -12,10 +12,22 @@ import subracesData from '@/data/subraces.json'
 import classesData from '@/data/classes.json'
 import { raceImageUrl, genderIconUrl, classImageUrl } from '@/utils/assets'
 
+const props = defineProps({
+  // Ограничения для создания персонажа (из приглашения мастера)
+  constraints: { type: Object, default: null }
+})
+
 const emit = defineEmits(['close', 'created'])
 
 // ===== STORE =====
 const creationStore = useCharacterCreationStore()
+
+// При монтировании передаём constraints в store
+onMounted(() => {
+  if (props.constraints) {
+    creationStore.setConstraints(props.constraints)
+  }
+})
 
 // ===== STATE =====
 const step = computed({
@@ -27,6 +39,11 @@ const totalSteps = 6
 // Form data - используем store
 const formData = computed(() => creationStore.formData)
 
+// Constraints - ограничения от мастера
+const isRaceAllowed = (raceId) => creationStore.isRaceAllowed(raceId)
+const isSubraceAllowed = (subraceId) => creationStore.isSubraceAllowed(subraceId)
+const isClassAllowed = (classId) => creationStore.isClassAllowed(classId)
+
 // Canvas state
 const canvasSize = 800 // Content size (positions calculated based on this)
 const viewBoxSize = 1600 // Larger viewBox for pan space
@@ -36,10 +53,6 @@ const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
 const isDragging = ref(false) // Track if user is dragging vs clicking
 
-onMounted(() => {
-  // При монтировании компонента восстанавливаем состояние из store
-  console.log('Восстановлено состояние:', creationStore.step, creationStore.formData)
-})
 const dragThreshold = 5 // pixels to move before considering it a drag
 
 // Touch state
@@ -802,6 +815,12 @@ const selectGender = (gender) => {
 const selectRace = (raceId) => {
   if (isDragging.value) return // Don't select if user was dragging
   
+  // Проверка на ограничения
+  if (!isRaceAllowed(raceId)) {
+    // Раса запрещена - не даём выбрать
+    return
+  }
+  
   // Detect double-click
   const now = Date.now()
   const isDoubleClick = 
@@ -844,12 +863,49 @@ const selectAspect = (aspectId) => {
 
 const selectSubrace = (aspectId) => {
   if (isDragging.value) return // Don't select if user was dragging
-  creationStore.setSubrace(`${formData.value.race}-${aspectId}`)
+  const subraceId = `${formData.value.race}-${aspectId}`
+  if (!isSubraceAllowed(subraceId)) return // Block forbidden subraces
+  
+  // Detect double-click
+  const now = Date.now()
+  const isDoubleClick = 
+    lastClickTarget.value === `subrace-${aspectId}` && 
+    (now - lastClickTime.value) < DOUBLE_CLICK_DELAY
+  
+  lastClickTime.value = now
+  lastClickTarget.value = `subrace-${aspectId}`
+  
+  if (isDoubleClick && step.value === 3) {
+    // Double-click: select and confirm immediately
+    creationStore.setSubrace(subraceId)
+    confirmSelection()
+  } else {
+    // Single click: just select
+    creationStore.setSubrace(subraceId)
+  }
 }
 
 const selectClass = (classId) => {
   if (isDragging.value) return // Don't select if user was dragging
-  creationStore.setClass(classId)
+  if (!isClassAllowed(classId)) return // Block forbidden classes
+  
+  // Detect double-click
+  const now = Date.now()
+  const isDoubleClick = 
+    lastClickTarget.value === `class-${classId}` && 
+    (now - lastClickTime.value) < DOUBLE_CLICK_DELAY
+  
+  lastClickTime.value = now
+  lastClickTarget.value = `class-${classId}`
+  
+  if (isDoubleClick && step.value === 4) {
+    // Double-click: select and confirm immediately (go to step 5)
+    creationStore.setClass(classId)
+    confirmSelection()
+  } else {
+    // Single click: just select
+    creationStore.setClass(classId)
+  }
 }
 
 // Click on canvas background to deselect
@@ -1152,16 +1208,18 @@ const showClasses = computed(() => step.value === 4)
             v-for="race in races"
             :key="race.id"
             :class="[
-              'cursor-pointer',
+              isRaceAllowed(race.id) ? 'cursor-pointer' : 'cursor-not-allowed',
               transitioning ? '' : 'transition-all duration-300'
             ]"
-            :style="
+            :style="[
               transitioning && formData.race !== race.id && transitionDirection === 'forward' ? 
                 'opacity: 0; transition: opacity 600ms ease-out;' : 
               transitioning && transitionDirection === 'backward' && formData.race !== race.id ?
                 'opacity: 0; transition: opacity 600ms ease-in;' : 
               transitioning && transitionDirection === 'backward' && formData.race === race.id ?
-                'opacity: 1;' : ''"
+                'opacity: 1;' : '',
+              !isRaceAllowed(race.id) ? 'filter: grayscale(100%); opacity: 0.5;' : ''
+            ].filter(Boolean).join(' ')"
             @click="selectRace(race.id)"
             @mouseenter="hoveredRace = race.id"
             @mouseleave="hoveredRace = null"
@@ -1295,15 +1353,27 @@ const showClasses = computed(() => step.value === 4)
               :cy="getAspectPosition(aspectId).y"
               r="40"
               fill="transparent"
-              class="cursor-pointer"
+              :class="isSubraceAllowed(`${formData.race}-${aspectId}`) ? 'cursor-pointer' : 'cursor-not-allowed'"
+              :style="!isSubraceAllowed(`${formData.race}-${aspectId}`) ? 'opacity: 0.3;' : ''"
               @click="selectSubrace(aspectId)"
               @mouseenter="hoveredAspect = aspectId"
               @mouseleave="hoveredAspect = null"
             />
 
+            <!-- Forbidden subrace indicator -->
+            <circle
+              v-if="!isSubraceAllowed(`${formData.race}-${aspectId}`)"
+              :cx="getAspectPosition(aspectId).x"
+              :cy="getAspectPosition(aspectId).y"
+              r="36"
+              fill="gray"
+              opacity="0.4"
+              class="pointer-events-none"
+            />
+
             <!-- Hover effect -->
             <circle
-              v-if="hoveredAspect === aspectId && selectedAspectId !== aspectId"
+              v-if="hoveredAspect === aspectId && selectedAspectId !== aspectId && isSubraceAllowed(`${formData.race}-${aspectId}`)"
               :cx="getAspectPosition(aspectId).x"
               :cy="getAspectPosition(aspectId).y"
               r="36"
@@ -1452,8 +1522,12 @@ const showClasses = computed(() => step.value === 4)
             
             <g 
               :transform="`translate(${getClassPosition(classItem).x}, ${getClassPosition(classItem).y}) scale(${formData.class === classItem.id ? 1.5 : 1})`"
-              class="cursor-pointer transition-all duration-300"
-              :class="{ 'opacity-100': !formData.class || formData.class === classItem.id, 'opacity-40': formData.class && formData.class !== classItem.id }"
+              :class="[
+                isClassAllowed(classItem.id) ? 'cursor-pointer' : 'cursor-not-allowed',
+                'transition-all duration-300',
+                { 'opacity-100': !formData.class || formData.class === classItem.id, 'opacity-40': formData.class && formData.class !== classItem.id }
+              ]"
+              :style="!isClassAllowed(classItem.id) ? 'filter: grayscale(100%); opacity: 0.35 !important;' : ''"
               @click="selectClass(classItem.id)"
               @mouseenter="hoveredClass = classItem.id"
               @mouseleave="hoveredClass = null"

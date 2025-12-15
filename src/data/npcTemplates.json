@@ -1,0 +1,120 @@
+{
+  "categories": [
+    { "id": "humanoid", "name": "Гуманоиды", "icon": "mdi:account" },
+    { "id": "beast", "name": "Звери", "icon": "mdi:paw" },
+    { "id": "monster", "name": "Монстры", "icon": "mdi:skull" },
+    { "id": "undead", "name": "Нежить", "icon": "mdi:ghost" },
+    { "id": "construct", "name": "Конструкты", "icon": "mdi:robot" },
+    { "id": "elemental", "name": "Элементали", "icon": "mdi:fire" },
+    { "id": "demon", "name": "Демоны", "icon": "mdi:emoticon-devil" },
+    { "id": "dragon", "name": "Драконы", "icon": "mdi:dragon" },
+    { "id": "other", "name": "Прочее", "icon": "mdi:help-circle" }
+  ],
+  "difficulties": [
+    { "id": "minion", "name": "Миньон", "color": "#64748b", "description": "Слабый противник, группы по 3-5" },
+    { "id": "regular", "name": "Рядовой", "color": "#22c55e", "description": "Обычный противник" },
+    { "id": "elite", "name": "Элита", "color": "#3b82f6", "description": "Сильный противник" },
+    { "id": "boss", "name": "Босс", "color": "#a855f7", "description": "Очень сильный противник" },
+    { "id": "legendary", "name": "Легендарный", "color": "#f59e0b", "description": "Исключительно сильный противник" }
+  ],
+  "templates": [
+    {
+      "id": "goblin",
+      "name": "Гоблин",
+      "category": "humanoid",
+      "difficulty": "minion",
+      "portrait": null,
+      "images": [],
+      "stats": {
+        "war": { "min": 1, "max": 2 },
+        "knowledge": { "min": 0, "max": 1 },
+        "community": { "min": 0, "max": 1 },
+        "shadow": { "min": 2, "max": 3 },
+        "mysticism": { "min": 0, "max": 0 },
+        "nature": { "min": 1, "max": 2 }
+      },
+      "health": {
+        "type": "simple",
+        "hp": { "min": 3, "max": 5 }
+      },
+      "skills": [],
+      "equipment": {
+        "armor": ["clothes", "leather"],
+        "weapons": [
+          { "type": "melee", "options": ["dagger", "club"] }
+        ]
+      },
+      "description": "Маленький хитрый гуманоид. Слабый в одиночку, опасен в группе."
+    },
+    {
+      "id": "skeleton",
+      "name": "Скелет",
+      "category": "undead",
+      "difficulty": "minion",
+      "portrait": null,
+      "images": [],
+      "stats": {
+        "war": { "min": 2, "max": 3 },
+        "knowledge": { "min": 0, "max": 0 },
+        "community": { "min": 0, "max": 0 },
+        "shadow": { "min": 1, "max": 2 },
+        "mysticism": { "min": 0, "max": 0 },
+        "nature": { "min": 0, "max": 0 }
+      },
+      "health": {
+        "type": "simple",
+        "hp": { "min": 4, "max": 6 }
+      },
+      "skills": [],
+      "equipment": {
+        "armor": ["none"],
+        "weapons": [
+          { "type": "melee", "options": ["sword", "axe"] }
+        ]
+      },
+      "description": "Оживлённые кости павшего воина."
+    },
+    {
+      "id": "wolf",
+      "name": "Волк",
+      "category": "beast",
+      "difficulty": "regular",
+      "portrait": null,
+      "images": [],
+      "stats": {
+        "war": { "min": 2, "max": 3 },
+        "knowledge": { "min": 0, "max": 0 },
+        "community": { "min": 1, "max": 2 },
+        "shadow": { "min": 2, "max": 3 },
+        "mysticism": { "min": 0, "max": 0 },
+        "nature": { "min": 3, "max": 4 }
+      },
+      "health": {
+        "type": "simple",
+        "hp": { "min": 6, "max": 8 }
+      },
+      "skills": [
+        { "id": "packTactics", "level": 1 }
+      ],
+      "equipment": {
+        "armor": ["none"],
+        "weapons": []
+      },
+      "naturalWeapons": [
+        { "name": "Укус", "damage": "1d6", "type": "piercing" }
+      ],
+      "description": "Свирепый хищник, охотящийся стаями."
+    }
+  ],
+  "customSkillTemplate": {
+    "id": "",
+    "name": "",
+    "description": "",
+    "aspectId": null,
+    "maxLevel": 1,
+    "levels": [
+      { "level": 1, "description": "" }
+    ],
+    "isCustom": true
+  }
+}

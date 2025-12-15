@@ -16,8 +16,9 @@ import CharacterSheet from '@/components/CharacterSheet.vue'
 import BattleMap from '@/components/BattleMap.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import SplashOverlay from '@/components/SplashOverlay.vue'
-import MobileGameLayout from '@/components/MobileGameLayout.vue'
+import GameLayout from '@/components/GameLayout.vue'
 import CharacterWizard from '@/components/CharacterWizard.vue'
+import PlayerProfileSetup from '@/components/PlayerProfileSetup.vue'
 import { isMobileScreen, setupMobileViewport } from '@/utils/mobile'
 
 const route = useRoute()
@@ -27,6 +28,7 @@ const userStore = useUserStore()
 const charactersStore = useCharactersStore()
 const battleMapStore = useBattleMapStore()
 const sceneLogStore = useSceneLogStore()
+
 
 const { roomId, status, connections } = storeToRefs(session)
 const { nickname, avatar, currentView } = storeToRefs(userStore)
@@ -60,8 +62,25 @@ const connectionError = ref('')
 const isMobile = ref(isMobileScreen())
 const pendingAction = ref(null)
 
+// Показывать модальное окно настройки профиля
+const showProfileSetup = ref(false)
+
+// Занятые иконки других игроков
+const takenIcons = computed(() => {
+  const players = session.allPlayers || []
+  return players
+    .filter(p => p.id !== userStore.userId && p.playerIcon && p.playerColor)
+    .map(p => ({
+      iconId: p.playerIcon,
+      colorId: p.playerColor,
+      playerName: p.name || 'Игрок'
+    }))
+})
+
 // Модальное окно создания персонажа
 const showCharacterCreator = ref(false)
+// Данные приглашения для создания персонажа (constraints и inviteId)
+const characterCreatorData = ref(null)
 
 // Выбранные объекты на карте (для мобильной инфокарточки)
 const selectedToken = ref(null)
@@ -87,9 +106,6 @@ const playerTokenPosition = computed(() => {
   if (!mapId) return null
   return battleMapStore.findTokenPosition(mapId, playerCharacter.value.id)
 })
-
-// Отладка
-console.log('PlayerRoom: isMobile =', isMobile.value, 'screen width =', window.innerWidth)
 
 // Порядок вкладок для навигации
 const navItems = [
@@ -127,6 +143,11 @@ onMounted(async () => {
     setupMobileViewport()
   }
   
+  // Проверяем, настроен ли профиль игрока
+  if (!userStore.isProfileComplete) {
+    showProfileSetup.value = true
+  }
+  
   // Подключаемся к комнате
   try {
     session.joinRoom(roomIdParam)
@@ -161,6 +182,17 @@ const setView = (view) => {
 const leaveRoom = () => {
   session.leaveRoom()
   router.push('/')
+}
+
+// Обработчики настройки профиля
+const handleProfileComplete = (profile) => {
+  showProfileSetup.value = false
+  // Профиль сохранён в store, уведомление отправлено через notifyProfileUpdate
+}
+
+const handleProfileCancel = () => {
+  showProfileSetup.value = false
+  // Если профиль не настроен и пользователь отменил, всё равно продолжаем
 }
 
 // Мобильные действия
@@ -417,6 +449,47 @@ const handleReactionDecline = (reactionId) => {
   reactionPrompt.value = null
 }
 
+// Обработчик клика по приглашению создать персонажа
+const handleCreateCharacter = (data) => {
+  // data может быть объектом с constraints и inviteId или пустым
+  characterCreatorData.value = data || null
+  showCharacterCreator.value = true
+}
+
+// Закрытие окна создания персонажа
+const closeCharacterCreator = () => {
+  showCharacterCreator.value = false
+  characterCreatorData.value = null
+}
+
+// Обработчик создания персонажа
+const handleCharacterCreated = (character) => {
+  console.log('Персонаж создан:', character)
+  
+  // Если персонаж создан по приглашению - обновляем событие
+  if (characterCreatorData.value?.inviteId && character) {
+    const inviteId = characterCreatorData.value.inviteId
+    
+    // Обновляем событие локально
+    sceneLogStore.markInviteUsed(inviteId, {
+      userId: userStore.userId,
+      characterId: character.id,
+      characterName: character.name,
+      characterPortrait: character.portrait
+    })
+    
+    // Отправляем мастеру уведомление об использовании приглашения
+    session.sendInviteUsed(inviteId, {
+      userId: userStore.userId,
+      characterId: character.id,
+      characterName: character.name,
+      characterPortrait: character.portrait
+    })
+  }
+  
+  closeCharacterCreator()
+}
+
 // Слушатель сообщений от мастера о реакциях
 const setupReactionListener = () => {
   // Это будет вызвано когда сессия установлена
@@ -489,15 +562,16 @@ const setupReactionListener = () => {
       </div>
     </div>
     
-    <!-- Mobile Interface -->
-    <template v-else-if="isMobile">
-      <MobileGameLayout
+    <!-- Game Interface (adaptive for mobile and desktop) -->
+    <template v-else>
+      <GameLayout
         :character="playerCharacter"
         :characters="characters"
         :selected-token="selectedToken"
         :selected-hex="selectedHex"
         :player-facing="playerFacing"
         :player-token-position="playerTokenPosition"
+        :is-master="false"
         :connection-status="status"
         :current-turn="currentTurn"
         :is-player-turn="isPlayerTurn"
@@ -520,78 +594,30 @@ const setupReactionListener = () => {
         @hex-long-press-confirm="handleHexLongPressConfirm"
         @token-rotate="handleTokenRotate"
         @action-target-selected="handleActionTargetSelected"
-        @create-character="showCharacterCreator = true"
+        @create-character="handleCreateCharacter"
       />
       
       <!-- Модальное окно создания персонажа -->
       <Teleport to="body">
         <div v-if="showCharacterCreator" class="character-creator-modal">
           <CharacterWizard 
-            @close="showCharacterCreator = false"
-            @created="showCharacterCreator = false"
+            :constraints="characterCreatorData?.constraints"
+            :invite-id="characterCreatorData?.inviteId"
+            @close="closeCharacterCreator"
+            @created="handleCharacterCreated"
           />
         </div>
       </Teleport>
-    </template>
-    
-    <!-- Desktop Interface -->
-    <template v-else>
-      <!-- Header -->
-      <header class="bg-slate-900/90 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center justify-between flex-shrink-0">
-        <div class="flex items-center gap-4">
-          <button
-            type="button"
-            class="text-slate-400 hover:text-white transition"
-            @click="leaveRoom"
-            title="Выйти из комнаты"
-          >
-            ← Выход
-          </button>
-          
-          <div class="h-6 w-px bg-white/10"></div>
-          
-          <span class="text-sm px-3 py-1 rounded-full bg-slate-800 border border-white/10 font-mono tracking-wider">
-            {{ route.params.roomId }}
-          </span>
-          
-          <span
-            class="px-2 py-0.5 rounded text-xs"
-            :class="connectionStatusClass"
-          >
-            {{ connectionStatusText }}
-          </span>
-        </div>
-        
-        <!-- Navigation -->
-        <nav class="flex gap-1">
-          <button
-            v-for="item in navItems"
-            :key="item.id"
-            type="button"
-            class="px-4 py-2 rounded-lg text-sm transition flex items-center gap-2"
-            :class="activeView === item.id 
-              ? 'bg-sky-500/20 text-sky-400 border border-sky-400/40' 
-              : 'text-slate-400 hover:text-white hover:bg-white/5'"
-            @click="setView(item.id)"
-          >
-            <span>{{ item.icon }}</span>
-            <span class="hidden sm:inline">{{ item.label }}</span>
-          </button>
-        </nav>
-        
-        <!-- User -->
-        <div class="flex items-center gap-3">
-          <UserAvatar :avatar="avatar" :size="32" />
-          <span class="text-sm hidden sm:inline">{{ nickname }}</span>
-        </div>
-      </header>
       
-      <!-- Content -->
-      <main class="flex-1 overflow-hidden">
-        <ChatPanel v-show="activeView === 'chat'" />
-        <CharacterSheet v-show="activeView === 'character-sheet'" />
-        <BattleMap v-show="activeView === 'battle-map'" :readonly="true" />
-      </main>
+      <!-- Модальное окно настройки профиля игрока -->
+      <Teleport to="body">
+        <PlayerProfileSetup
+          v-if="showProfileSetup"
+          :taken-icons="takenIcons"
+          @complete="handleProfileComplete"
+          @cancel="handleProfileCancel"
+        />
+      </Teleport>
     </template>
     
     <!-- Сплеш-оверлей для эффектов от мастера -->

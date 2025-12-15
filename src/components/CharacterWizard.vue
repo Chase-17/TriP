@@ -7,6 +7,13 @@ import { calculateMaxHP } from '@/utils/wounds'
 import { presetUrl } from '@/utils/assets'
 import CharacterCreationCanvas from './CharacterCreationCanvas.vue'
 
+const props = defineProps({
+  // Ограничения для создания персонажа (из приглашения мастера)
+  constraints: { type: Object, default: null },
+  // ID приглашения (для отслеживания использования)
+  inviteId: { type: String, default: null }
+})
+
 const emit = defineEmits(['close', 'created'])
 const userStore = useUserStore()
 const charactersStore = useCharactersStore()
@@ -84,5 +91,9 @@ const handleClose = () => {
 </script>
 
 <template>
-  <CharacterCreationCanvas @close="handleClose" @created="createCharacter" />
+  <CharacterCreationCanvas 
+    :constraints="constraints"
+    @close="handleClose" 
+    @created="createCharacter" 
+  />
 </template>

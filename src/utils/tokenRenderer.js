@@ -67,19 +67,43 @@ export const loadImage = (src) => {
     return Promise.resolve(imageCache.get(src))
   }
   
+  const isExternalUrl = src.startsWith('http://') || src.startsWith('https://')
+  const isDataOrBlob = src.startsWith('data:') || src.startsWith('blob:')
+  
   return new Promise((resolve, reject) => {
     const img = new Image()
-    // Для data URLs и blob URLs crossOrigin не нужен
-    if (!src.startsWith('data:') && !src.startsWith('blob:')) {
+    
+    const tryLoadWithoutCors = () => {
+      const img2 = new Image()
+      img2.onload = () => {
+        imageCache.set(src, img2)
+        resolve(img2)
+      }
+      img2.onerror = () => {
+        console.warn('Failed to load image (no CORS):', src)
+        resolve(null)
+      }
+      img2.src = src
+    }
+    
+    // Для data/blob URLs crossOrigin не нужен
+    if (!isDataOrBlob) {
       img.crossOrigin = 'anonymous'
     }
+    
     img.onload = () => {
       imageCache.set(src, img)
       resolve(img)
     }
     img.onerror = (e) => {
-      console.warn('Failed to load image:', src, e)
-      resolve(null) // Не reject, чтобы не ломать Promise.all
+      // Для внешних URL пробуем загрузить без CORS
+      if (isExternalUrl) {
+        console.warn('CORS failed for image, trying without:', src)
+        tryLoadWithoutCors()
+      } else {
+        console.warn('Failed to load image:', src, e)
+        resolve(null)
+      }
     }
     img.src = src
   })
@@ -647,11 +671,6 @@ export const drawToken = (ctx, token, options = {}) => {
   const cy = pixelY
   const portraitRadius = tokenSize / 2
   const rotation = facing * 30 + facingOffset // facing: 0-11, каждый шаг = 30°, + смещение для ориентации
-  
-  // DEBUG
-  if (isSelected || isHovered) {
-    console.log(`[drawToken] ${character.name}: facing=${facing}, facingOffset=${facingOffset}, rotation=${rotation}`)
-  }
   
   // Получаем данные для ран
   const wounds = character.combat?.wounds

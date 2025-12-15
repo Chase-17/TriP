@@ -1,6 +1,6 @@
 <script setup>
 /**
- * MobileGameLayout - единый мобильный layout для игрока
+ * GameLayout - единый адаптивный layout для игрока и мастера
  * Структура:
  * - Инфопанель (250px) - контекстная информация
  * - Рабочая область (flex) - карта/персонаж/чат
@@ -14,12 +14,20 @@ import { useCharactersStore } from '@/stores/characters'
 import { useBattleMapStore } from '@/stores/battleMap'
 import { useUserStore } from '@/stores/user'
 import { useSceneLogStore, SceneFilters } from '@/stores/sceneLog'
+import { isMobileScreen } from '@/utils/mobile'
 import MobileInfoCard from './MobileInfoCard.vue'
 import BattleMap from './BattleMap.vue'
 import SceneLog from './SceneLog.vue'
 import MobileCharacterSheet from './MobileCharacterSheet.vue'
+// Компоненты мастера
+import MasterSceneTools from './MasterSceneTools.vue'
+import MasterTools from './MasterTools.vue'
+import MasterCharactersPanel from './MasterCharactersPanel.vue'
+import SceneTemplatesList from './SceneTemplatesList.vue'
 
 const props = defineProps({
+  // Режим мастера - показывает дополнительные инструменты
+  isMaster: { type: Boolean, default: false },
   // Персонаж игрока
   character: { type: Object, default: null },
   // Все персонажи
@@ -70,13 +78,102 @@ const battleMapStore = useBattleMapStore()
 const userStore = useUserStore()
 const sceneLogStore = useSceneLogStore()
 
+// Импортируем sessionStore для получения roomId мастера
+import { useSessionStore } from '@/stores/session'
+const sessionStore = useSessionStore()
+const { roomId } = storeToRefs(sessionStore)
+
+// Копирование кода комнаты
+const codeCopied = ref(false)
+const copyRoomCode = async () => {
+  if (!roomId.value) return
+  try {
+    await navigator.clipboard.writeText(roomId.value)
+    codeCopied.value = true
+    setTimeout(() => { codeCopied.value = false }, 2000)
+  } catch (e) {
+    console.error('Не удалось скопировать:', e)
+  }
+}
+
 const { myCharacters, activeCharacter, activeCharacterId } = storeToRefs(charactersStore)
 const { activeFilter, hasActiveImage, currentImage } = storeToRefs(sceneLogStore)
+const { layoutPreference } = storeToRefs(userStore)
 
-// Основные экраны (порядок важен для свайпа)
-const screens = ['battle-map', 'character-sheet', 'chat']
+// === Layout режим (mobile/desktop) ===
+const screenWidth = ref(window.innerWidth)
+const isScreenMobile = computed(() => isMobileScreen())
+
+// Эффективный layout с учётом настройки пользователя
+const effectiveLayout = computed(() => {
+  if (layoutPreference.value === 'mobile') return 'mobile'
+  if (layoutPreference.value === 'desktop') return 'desktop'
+  // auto - по размеру экрана
+  return isScreenMobile.value ? 'mobile' : 'desktop'
+})
+
+const isMobileLayout = computed(() => effectiveLayout.value === 'mobile')
+const isDesktopLayout = computed(() => effectiveLayout.value === 'desktop')
+
+// Отслеживаем изменение размера экрана
+const handleResize = () => {
+  screenWidth.value = window.innerWidth
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+  
+  // Загружаем шаблоны из localStorage для мастера
+  if (props.isMaster) {
+    const saved = localStorage.getItem('scene-templates-v2')
+    if (saved) {
+      try {
+        sceneTemplates.value = JSON.parse(saved)
+      } catch (e) {
+        console.error('Failed to load templates:', e)
+      }
+    }
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+})
+
+// Основные экраны (порядок важен для свайпа) - разные для игрока и мастера
+const screens = computed(() => {
+  if (props.isMaster) {
+    return ['battle-map', 'chat', 'master-tools', 'characters', 'character-sheet']
+  }
+  return ['battle-map', 'character-sheet', 'chat']
+})
 const activeScreen = ref(userStore.mobileActiveScreen || 'battle-map')
-const screenIndex = computed(() => screens.indexOf(activeScreen.value))
+const screenIndex = computed(() => screens.value.indexOf(activeScreen.value))
+const screenCount = computed(() => screens.value.length)
+
+// Ref для MasterSceneTools и шаблоны
+const masterSceneToolsRef = ref(null)
+const sceneTemplates = ref([])
+
+// Обработчики шаблонов
+const onTemplatesUpdated = (templates) => {
+  sceneTemplates.value = templates
+}
+const onSelectTemplate = (template) => {
+  if (masterSceneToolsRef.value) {
+    masterSceneToolsRef.value.loadTemplate(template)
+  }
+}
+const onDeleteTemplate = (templateId) => {
+  if (masterSceneToolsRef.value) {
+    masterSceneToolsRef.value.deleteTemplate(templateId)
+  }
+}
+const onToggleSent = (templateId) => {
+  if (masterSceneToolsRef.value) {
+    masterSceneToolsRef.value.toggleTemplateSent(templateId)
+  }
+}
 
 // Вкладки листа персонажа
 const sheetTabs = [
@@ -87,12 +184,22 @@ const sheetTabs = [
 ]
 const activeSheetTab = ref('main')
 
-// Навигация
-const navItems = [
-  { id: 'battle-map', label: 'Карта', icon: 'mdi:map' },
-  { id: 'character-sheet', label: 'Персонаж', icon: 'mdi:account' },
-  { id: 'chat', label: 'Сцена', icon: 'mdi:drama-masks' }
-]
+// Навигация - разные вкладки для игрока и мастера
+const navItems = computed(() => {
+  if (props.isMaster) {
+    return [
+      { id: 'battle-map', label: 'Карта', icon: 'mdi:map' },
+      { id: 'chat', label: 'Сцена', icon: 'mdi:drama-masks' },
+      { id: 'master-tools', label: 'Инструменты', icon: 'mdi:cog' },
+      { id: 'characters', label: 'Все персонажи', icon: 'mdi:account-group' }
+    ]
+  }
+  return [
+    { id: 'battle-map', label: 'Карта', icon: 'mdi:map' },
+    { id: 'character-sheet', label: 'Персонаж', icon: 'mdi:account' },
+    { id: 'chat', label: 'Сцена', icon: 'mdi:drama-masks' }
+  ]
+})
 
 // Фильтры для экрана сцены
 const sceneFilterOptions = [
@@ -103,24 +210,15 @@ const sceneFilterOptions = [
   { id: SceneFilters.ITEMS, label: 'Вещи', icon: 'mdi:treasure-chest' },
 ]
 
-// UI состояние - раздельная свёрнутость для каждого экрана
-const infoPanelCollapsedMap = ref({
-  'battle-map': false,
-  'character-sheet': false,
-  'chat': false
-})
-
+// UI состояние - раздельная свёрнутость для каждого экрана (из userStore)
+// По умолчанию панели закрыты (collapsed=true означает закрыто)
 // Текущее состояние свёрнутости зависит от активного экрана
 const infoCardCollapsed = computed({
-  get: () => infoPanelCollapsedMap.value[activeScreen.value] ?? false,
-  set: (val) => { infoPanelCollapsedMap.value[activeScreen.value] = val }
+  get: () => !userStore.getInfoPanelOpen(activeScreen.value),
+  set: (val) => { userStore.setInfoPanelOpen(activeScreen.value, !val) }
 })
 
 const menuOpen = ref(false)
-
-// Автосворачивание инфопанели для экрана сцены
-const sceneInfoPanelTimer = ref(null)
-const SCENE_INFO_PANEL_TIMEOUT = 10000 // 10 секунд
 
 // Открыть инфопанель сцены и показать картинку из события
 const openSceneInfoPanel = (event) => {
@@ -128,52 +226,20 @@ const openSceneInfoPanel = (event) => {
   if (event && event.url) {
     sceneLogStore.setSceneImage(event.url, event.description, event.senderUserId)
   }
-  infoPanelCollapsedMap.value['chat'] = false
+  userStore.setInfoPanelOpen('chat', true)
   sceneLogStore.touchInfoPanel()
-  resetSceneInfoPanelTimer()
 }
 
 // Скрыть изображение сцены и свернуть инфопанель
 const hideSceneImage = () => {
   sceneLogStore.clearSceneImage()
-  infoPanelCollapsedMap.value['chat'] = true
+  userStore.setInfoPanelOpen('chat', false)
 }
 
 const touchSceneInfoPanel = () => {
   sceneLogStore.touchInfoPanel()
-  infoPanelCollapsedMap.value['chat'] = false
-  resetSceneInfoPanelTimer()
+  userStore.setInfoPanelOpen('chat', true)
 }
-
-const resetSceneInfoPanelTimer = () => {
-  if (sceneInfoPanelTimer.value) {
-    clearTimeout(sceneInfoPanelTimer.value)
-  }
-  if (activeScreen.value === 'chat') {
-    sceneInfoPanelTimer.value = setTimeout(() => {
-      infoCardCollapsed.value = true
-    }, SCENE_INFO_PANEL_TIMEOUT)
-  }
-}
-
-// Следим за сменой экрана
-watch(activeScreen, (newScreen) => {
-  if (newScreen === 'chat') {
-    resetSceneInfoPanelTimer()
-  } else {
-    if (sceneInfoPanelTimer.value) {
-      clearTimeout(sceneInfoPanelTimer.value)
-      sceneInfoPanelTimer.value = null
-    }
-  }
-})
-
-// Очистка таймера при размонтировании
-onUnmounted(() => {
-  if (sceneInfoPanelTimer.value) {
-    clearTimeout(sceneInfoPanelTimer.value)
-  }
-})
 
 // Свайп для переключения экранов
 const swipeState = ref({
@@ -243,6 +309,12 @@ const selectScreen = (screenId) => {
   emit('set-view', screenId)
 }
 
+// Открыть лист персонажа для мастера
+const openMasterCharacterSheet = (charId) => {
+  charactersStore.setActiveCharacter(charId)
+  selectScreen('character-sheet')
+}
+
 const toggleMenu = () => {
   menuOpen.value = !menuOpen.value
 }
@@ -270,6 +342,12 @@ const infoPanelMode = computed(() => {
   if (activeScreen.value === 'battle-map') return 'map'
   if (activeScreen.value === 'character-sheet') return 'character'
   return 'chat'
+})
+
+// Показывается ли инфопанель (для мастера скрывается на экране сцены)
+const showInfoPanel = computed(() => {
+  if (props.isMaster && activeScreen.value === 'chat') return false
+  return true
 })
 
 // Действия на карте
@@ -367,9 +445,19 @@ const selectCharacter = (charId) => {
 </script>
 
 <template>
-  <div class="mobile-game-layout" :class="{ 'player-turn': isPlayerTurn }">
-    <!-- ИНФОПАНЕЛЬ (overlay) -->
+  <div 
+    class="game-layout" 
+    :class="{ 
+      'player-turn': isPlayerTurn,
+      'mobile-layout': isMobileLayout,
+      'desktop-layout': isDesktopLayout,
+      'master-mode': isMaster,
+      'no-info-panel': !showInfoPanel
+    }"
+  >
+    <!-- ИНФОПАНЕЛЬ (overlay) - скрыта для мастера только на экране сцены -->
     <div 
+      v-if="showInfoPanel"
       class="info-panel-overlay" 
       :class="{ 
         collapsed: infoCardCollapsed,
@@ -387,6 +475,7 @@ const selectCharacter = (charId) => {
           :collapsed="infoCardCollapsed"
           :is-player-turn="isPlayerTurn"
           :player-token-position="playerTokenPosition"
+          :is-master="isMaster"
           @toggle-collapse="infoCardCollapsed = !infoCardCollapsed"
           @open-character-sheet="(charId) => { emit('open-character-sheet', charId); activeScreen = 'character-sheet' }"
           @switch-equipment="$emit('switch-equipment')"
@@ -397,14 +486,15 @@ const selectCharacter = (charId) => {
       <!-- Режим персонажа - используем тот же MobileInfoCard -->
       <template v-else-if="infoPanelMode === 'character'">
         <MobileInfoCard
-          :selected-token="null"
+          :selected-token="selectedToken"
           :selected-hex="null"
           :player-character="activeCharacter"
-          :player-facing="0"
+          :player-facing="playerFacing"
           :collapsed="infoCardCollapsed"
           :is-player-turn="isPlayerTurn"
           :player-token-position="null"
           :always-show-player="true"
+          :is-master="isMaster"
           @toggle-collapse="infoCardCollapsed = !infoCardCollapsed"
           @open-character-sheet="(charId) => emit('open-character-sheet', charId)"
           @switch-equipment="$emit('switch-equipment')"
@@ -464,15 +554,18 @@ const selectCharacter = (charId) => {
     <div class="workspace">
       <div 
         class="screens-container"
+        :class="{ 'master-screens': isMaster }"
         :style="{ 
-          transform: `translateX(calc(-${screenIndex * (100/3)}% + ${containerOffset}px))`,
+          width: `${screenCount * 100}%`,
+          transform: `translateX(calc(-${screenIndex * (100/screenCount)}% + ${containerOffset}px))`,
           transition: swipeState.isDragging ? 'none' : 'transform 300ms ease-out'
         }"
       >
-        <!-- Экран: Карта -->
-        <div class="screen screen-map">
+        <!-- Экран: Карта (общий для всех) -->
+        <div class="screen screen-map" :style="{ width: `${100/screenCount}%` }">
           <BattleMap
-            :readonly="!isPlayerTurn"
+            :readonly="!isMaster && !isPlayerTurn"
+            :is-master="isMaster"
             :mobile-mode="true"
             :pending-action="pendingAction"
             @action-target-selected="handleActionTargetSelected"
@@ -485,25 +578,78 @@ const selectCharacter = (charId) => {
           />
         </div>
         
-        <!-- Экран: Персонаж -->
-        <div class="screen screen-character">
-          <MobileCharacterSheet
-            :embedded="true"
-            :active-tab="activeSheetTab"
-            @update:activeTab="activeSheetTab = $event"
-            @create-character="emit('create-character')"
-          />
-        </div>
+        <!-- Экраны игрока -->
+        <template v-if="!isMaster">
+          <!-- Экран: Персонаж -->
+          <div class="screen screen-character" :style="{ width: `${100/screenCount}%` }">
+            <MobileCharacterSheet
+              :embedded="true"
+              :active-tab="activeSheetTab"
+              @update:activeTab="activeSheetTab = $event"
+              @create-character="emit('create-character', $event)"
+            />
+          </div>
+          
+          <!-- Экран: Сцена -->
+          <div class="screen screen-chat" :style="{ width: `${100/screenCount}%` }">
+            <SceneLog 
+              @go-to-battle="selectScreen('battle-map')"
+              @create-character="emit('create-character', $event)"
+              @view-image="openSceneInfoPanel"
+              @hide-image="hideSceneImage"
+            />
+          </div>
+        </template>
         
-        <!-- Экран: Сцена -->
-        <div class="screen screen-chat">
-          <SceneLog 
-            @go-to-battle="selectScreen('battle-map')"
-            @create-character="emit('create-character')"
-            @view-image="openSceneInfoPanel"
-            @hide-image="hideSceneImage"
-          />
-        </div>
+        <!-- Экраны мастера -->
+        <template v-else>
+          <!-- Экран: Сцена с инструментами мастера -->
+          <div class="screen screen-scene-master" :style="{ width: `${100/screenCount}%` }">
+            <div class="master-scene-layout">
+              <div class="master-scene-tools-column">
+                <MasterSceneTools 
+                  ref="masterSceneToolsRef"
+                  @templates-updated="onTemplatesUpdated"
+                />
+              </div>
+              <div class="master-scene-templates-column">
+                <SceneTemplatesList 
+                  :templates="sceneTemplates"
+                  @select-template="onSelectTemplate"
+                  @delete-template="onDeleteTemplate"
+                  @toggle-sent="onToggleSent"
+                />
+              </div>
+              <div class="master-scene-log">
+                <SceneLog 
+                  @go-to-battle="selectScreen('battle-map')"
+                  @view-image="openSceneInfoPanel"
+                  @hide-image="hideSceneImage"
+                />
+              </div>
+            </div>
+          </div>
+          
+          <!-- Экран: Инструменты мастера -->
+          <div class="screen screen-master-tools" :style="{ width: `${100/screenCount}%` }">
+            <MasterTools />
+          </div>
+          
+          <!-- Экран: Персонажи -->
+          <div class="screen screen-characters" :style="{ width: `${100/screenCount}%` }">
+            <MasterCharactersPanel @open-character-sheet="openMasterCharacterSheet" />
+          </div>
+          
+          <!-- Экран: Лист персонажа (для просмотра мастером) -->
+          <div class="screen screen-character" :style="{ width: `${100/screenCount}%` }">
+            <MobileCharacterSheet
+              :embedded="true"
+              :active-tab="activeSheetTab"
+              @update:activeTab="activeSheetTab = $event"
+              @go-to-characters="selectScreen('characters')"
+            />
+          </div>
+        </template>
       </div>
     </div>
     
@@ -546,6 +692,15 @@ const selectCharacter = (charId) => {
       <!-- Для персонажа - вкладки листа -->
       <template v-else-if="activeScreen === 'character-sheet'">
         <div class="sheet-tabs">
+          <!-- Кнопка назад для мастера -->
+          <button
+            v-if="isMaster"
+            class="sheet-tab back-btn"
+            @click="selectScreen('characters')"
+          >
+            <Icon icon="mdi:arrow-left" class="tab-icon" />
+            <span class="tab-label">Назад</span>
+          </button>
           <button
             v-for="tab in sheetTabs"
             :key="tab.id"
@@ -607,6 +762,52 @@ const selectCharacter = (charId) => {
     <Transition name="menu-fade">
       <div v-if="menuOpen" class="menu-overlay" @click="menuOpen = false">
         <div class="menu-content" @click.stop>
+          <!-- Код комнаты (только для мастера) -->
+          <template v-if="isMaster && roomId">
+            <div class="menu-section">
+              <div class="menu-section-title">Код комнаты</div>
+              <button class="room-code-btn" @click="copyRoomCode">
+                <span class="room-code">{{ roomId }}</span>
+                <Icon :icon="codeCopied ? 'mdi:check' : 'mdi:content-copy'" class="copy-icon" />
+              </button>
+              <p v-if="codeCopied" class="copy-hint">Скопировано!</p>
+            </div>
+            <div class="menu-divider"></div>
+          </template>
+          
+          <!-- Переключатель layout -->
+          <div class="menu-section">
+            <div class="menu-section-title">Режим отображения</div>
+            <div class="layout-switcher">
+              <button 
+                class="layout-option" 
+                :class="{ active: layoutPreference === 'auto' }"
+                @click="userStore.setLayoutPreference('auto')"
+              >
+                <Icon icon="mdi:cellphone-link" />
+                <span>Авто</span>
+              </button>
+              <button 
+                class="layout-option" 
+                :class="{ active: layoutPreference === 'mobile' }"
+                @click="userStore.setLayoutPreference('mobile')"
+              >
+                <Icon icon="mdi:cellphone" />
+                <span>Мобильный</span>
+              </button>
+              <button 
+                class="layout-option" 
+                :class="{ active: layoutPreference === 'desktop' }"
+                @click="userStore.setLayoutPreference('desktop')"
+              >
+                <Icon icon="mdi:monitor" />
+                <span>Десктоп</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="menu-divider"></div>
+          
           <button class="menu-item exit" @click="emit('leave-room'); menuOpen = false">
             <Icon icon="mdi:exit-to-app" />
             <span>Выйти из комнаты</span>
@@ -618,7 +819,8 @@ const selectCharacter = (charId) => {
 </template>
 
 <style scoped>
-.mobile-game-layout {
+/* === BASE LAYOUT === */
+.game-layout {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -628,6 +830,98 @@ const selectCharacter = (charId) => {
   overflow: hidden;
   position: relative;
 }
+
+/* === DESKTOP LAYOUT === */
+.game-layout.desktop-layout {
+  flex-direction: column;
+}
+
+/* Desktop: Навбар сверху на всю ширину */
+.game-layout.desktop-layout .nav-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  border-top: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 60;
+  order: -1;
+}
+
+.game-layout.desktop-layout .nav-bar .menu-btn {
+  order: 3;
+}
+
+.game-layout.desktop-layout .nav-bar .nav-tabs {
+  order: 1;
+  flex: 1;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-left: 16px;
+}
+
+.game-layout.desktop-layout .nav-bar .connection-status {
+  order: 2;
+}
+
+/* Desktop: Инфопанель сверху на всю ширину */
+.game-layout.desktop-layout .info-panel-overlay {
+  position: fixed;
+  top: 48px; /* Под навбаром */
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  max-height: calc(100vh - 180px);
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.game-layout.desktop-layout .info-panel-overlay.collapsed {
+  width: 100%;
+  max-width: none;
+  height: 56px;
+}
+
+/* Desktop: Содержимое инфопанели - ограничено и по центру */
+.game-layout.desktop-layout .info-panel-overlay :deep(.info-card),
+.game-layout.desktop-layout .info-panel-overlay .info-panel-content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Desktop: Рабочая область - отступы под навбар, инфопанель и панель действий */
+.game-layout.desktop-layout .workspace {
+  flex: 1;
+  padding-top: calc(48px + 56px); /* Навбар + свёрнутая инфопанель */
+  padding-bottom: 90px; /* Панель действий */
+}
+
+/* Когда инфопанель скрыта (для мастера на экране сцены) - меньше отступ */
+.game-layout.desktop-layout.no-info-panel .workspace {
+  padding-top: 48px; /* Только навбар */
+}
+
+.game-layout.desktop-layout .screens-container {
+  padding-top: 0;
+}
+
+/* Desktop: Панель действий внизу */
+.game-layout.desktop-layout .action-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 55;
+}
+
+/* === MOBILE LAYOUT (default) === */
 
 /* ИНФОПАНЕЛЬ - overlay поверх рабочей области */
 .info-panel-overlay {
@@ -895,16 +1189,18 @@ const selectCharacter = (charId) => {
   flex: 1;
   overflow: hidden;
   position: relative;
+  /* Mobile: отступ сверху под свёрнутую инфопанель */
+  padding-top: 56px;
 }
 
 .screens-container {
   display: flex;
   height: 100%;
-  width: 300%;
+  /* Ширина задаётся динамически через inline style */
 }
 
 .screen {
-  width: calc(100% / 3); /* Каждый экран = 1/3 от контейнера = 100% viewport */
+  /* Ширина задаётся динамически через inline style */
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
@@ -919,8 +1215,60 @@ const selectCharacter = (charId) => {
   overflow-y: auto;
 }
 
+/* Desktop: Отступ снизу для экрана персонажа под панель действий (только для игрока) */
+.game-layout.desktop-layout:not(.master-mode) .screen-character {
+  padding-bottom: 100px;
+}
+
 .screen-chat {
   background: #0f172a;
+}
+
+/* Экраны мастера */
+.screen-scene-master {
+  background: #0f172a;
+  overflow: hidden;
+}
+
+.master-scene-layout {
+  display: flex;
+  height: 100%;
+  gap: 16px;
+  padding: 16px;
+}
+
+.master-scene-tools-column {
+  flex: 0 0 auto;
+  width: 380px;
+  min-width: 320px;
+  max-width: 450px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.master-scene-templates-column {
+  flex: 0 0 auto;
+  width: 240px;
+  min-width: 200px;
+  max-width: 280px;
+  overflow: hidden;
+}
+
+.master-scene-log {
+  flex: 1;
+  max-width: 600px;
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.screen-master-tools {
+  background: #0f172a;
+  overflow-y: auto;
+}
+
+.screen-characters {
+  background: #0f172a;
+  overflow-y: auto;
 }
 
 /* ПАНЕЛЬ ДЕЙСТВИЙ - 90px */
@@ -1045,6 +1393,16 @@ const selectCharacter = (charId) => {
   background: rgba(56, 189, 248, 0.15);
   border-color: rgba(56, 189, 248, 0.3);
   color: #38bdf8;
+}
+
+.sheet-tab.back-btn {
+  background: rgba(71, 85, 105, 0.4);
+  color: #94a3b8;
+}
+
+.sheet-tab.back-btn:hover {
+  background: rgba(71, 85, 105, 0.6);
+  color: #cbd5e1;
 }
 
 .tab-icon {
@@ -1214,7 +1572,101 @@ const selectCharacter = (charId) => {
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   padding: 8px;
-  min-width: 200px;
+  min-width: 240px;
+}
+
+.menu-section {
+  padding: 8px;
+}
+
+.menu-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.layout-switcher {
+  display: flex;
+  gap: 4px;
+}
+
+.layout-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: rgba(51, 65, 85, 0.4);
+  border: 1px solid transparent;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.layout-option:hover {
+  background: rgba(51, 65, 85, 0.6);
+}
+
+.layout-option.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.layout-option svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menu-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.15);
+  margin: 4px 0;
+}
+
+/* Код комнаты мастера */
+.room-code-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.room-code-btn:hover {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+.room-code {
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: #f59e0b;
+}
+
+.copy-icon {
+  width: 18px;
+  height: 18px;
+  color: #f59e0b;
+}
+
+.copy-hint {
+  font-size: 11px;
+  color: #22c55e;
+  margin-top: 4px;
+  text-align: center;
 }
 
 .menu-item {
@@ -1251,8 +1703,13 @@ const selectCharacter = (charId) => {
 }
 
 /* Подсветка хода игрока */
-.mobile-game-layout.player-turn .action-panel {
+.game-layout.player-turn .action-panel {
   background: linear-gradient(to top, rgba(34, 197, 94, 0.1), rgba(15, 23, 42, 0.95));
   border-top-color: rgba(34, 197, 94, 0.3);
+}
+
+/* === MASTER MODE EXTRAS === */
+.game-layout.master-mode .nav-bar {
+  background: linear-gradient(to right, rgba(139, 92, 246, 0.1), rgba(15, 23, 42, 0.98));
 }
 </style>

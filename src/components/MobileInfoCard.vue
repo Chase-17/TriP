@@ -145,15 +145,6 @@
               <Icon icon="mdi:map-marker-distance" class="w-4 h-4 text-sky-400" />
               <span>{{ distanceToHex }} гекс{{ distanceToHex === 1 ? '' : distanceToHex < 5 ? 'а' : 'ов' }}</span>
             </div>
-            <!-- Кнопка перемещения -->
-            <button 
-              v-if="canMove" 
-              class="move-btn"
-              @click.stop="handleMoveToHex"
-            >
-              <Icon icon="mdi:run" class="w-4 h-4" />
-              <span>Переместиться</span>
-            </button>
           </div>
         </div>
       </div>
@@ -203,6 +194,11 @@ const props = defineProps({
   },
   // Всегда показывать персонажа игрока (для страницы персонажа)
   alwaysShowPlayer: {
+    type: Boolean,
+    default: false
+  },
+  // Мастер видит все токены как свои
+  isMaster: {
     type: Boolean,
     default: false
   }
@@ -318,6 +314,8 @@ const handleMoveToHex = () => {
 
 // Определение своего токена
 const isOwnToken = computed(() => {
+  // Мастер видит все токены как свои
+  if (props.isMaster) return true
   // Если alwaysShowPlayer - всегда показываем как своего
   if (props.alwaysShowPlayer) return true
   // Если выбран гекс без токена - это не "свой токен", это гекс
@@ -555,8 +553,6 @@ const drawRangedDefenceSegment = (ctx, cx, cy, radius, segment, difficulty, rota
 
 // Отрисовка canvas
 const renderCanvas = async () => {
-  console.log('[MobileInfoCard] renderCanvas called, playerFacing:', props.playerFacing)
-  
   const canvas = defenceCanvas.value
   if (!canvas) return
   
@@ -605,6 +601,9 @@ const renderCanvas = async () => {
     drawLightWounds(ctx, cx, cy, portraitRadius, wounds, slots)
   }
   
+  // Защита показывается только для своих токенов (или для мастера)
+  if (!isOwnToken.value) return
+  
   // Получаем защиту - сначала с токена, потом вычисляем из персонажа
   let meleeDefence = props.selectedToken?.meleeDefence
   let rangedDefence = props.selectedToken?.rangedDefence
@@ -626,9 +625,6 @@ const renderCanvas = async () => {
   
   // Facing приходит как 0-11, переводим в градусы + смещение
   const rotation = (props.playerFacing || 0) * 30 + facingOffset
-  
-  // DEBUG
-  console.log(`[MobileInfoCard] playerFacing=${props.playerFacing}, facingOffset=${facingOffset}, rotation=${rotation}, isPointy=${isPointy}`)
   
   const meleeRadius = portraitRadius + 14 // Отступ для царапин
   const rangedRadius = meleeRadius + 6    // Дуги снаружи гекса

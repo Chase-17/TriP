@@ -16,6 +16,13 @@ export const useUserStore = defineStore('user', {
     nickname: '',
     avatar: null,
     
+    // Иконка игрока (как фигурка в монополии)
+    playerIcon: null, // id иконки из списка PLAYER_ICONS
+    playerColor: null, // hex цвет иконки
+    
+    // Флаг, был ли профиль полностью настроен (имя + иконка + цвет)
+    profileComplete: false,
+    
     // UI-состояния
     currentView: 'chat', // chat | character-sheet | battle-map
     showCharacterWizard: false, // Открыт ли визард создания персонажа
@@ -32,18 +39,28 @@ export const useUserStore = defineStore('user', {
     // Формат: { [characterId]: { expandedSkills: ['skillId1', 'skillId2'], allExpanded: false } }
     skillPreferences: {},
     
+    // Состояние инфопанелей на разных экранах
+    // По умолчанию все закрыты
+    infoPanelState: {
+      'battle-map': false,
+      'character-sheet': false,
+      'chat': false,
+      'scene': false
+    },
+    
     // Внутренний коллбэк для уведомления об изменениях профиля
     _profileUpdateCallback: null
   }),
   
   persist: {
     key: 'trip-user-v2',
-    paths: ['userId', 'nickname', 'avatar', 'currentView', 'showCharacterWizard', 'mobileActiveScreen', 'layoutPreference', 'characterModes', 'skillPreferences']
+    paths: ['userId', 'nickname', 'avatar', 'playerIcon', 'playerColor', 'profileComplete', 'currentView', 'showCharacterWizard', 'mobileActiveScreen', 'layoutPreference', 'characterModes', 'skillPreferences', 'infoPanelState']
   },
   
   getters: {
     displayName: (state) => state.nickname || 'Гость',
-    hasProfile: (state) => Boolean(state.nickname && state.avatar)
+    hasProfile: (state) => Boolean(state.nickname && state.avatar),
+    isProfileComplete: (state) => Boolean(state.nickname && state.playerIcon && state.playerColor && state.profileComplete)
   },
   
   actions: {
@@ -73,6 +90,36 @@ export const useUserStore = defineStore('user', {
       this.notifyProfileUpdate()
     },
     
+    setPlayerIcon(iconId) {
+      this.playerIcon = iconId
+      this.notifyProfileUpdate()
+    },
+    
+    setPlayerColor(color) {
+      this.playerColor = color
+      this.notifyProfileUpdate()
+    },
+    
+    completeProfile() {
+      this.profileComplete = true
+    },
+    
+    // Установить все данные профиля одним действием
+    setFullProfile({ nickname, playerIcon, playerColor }) {
+      if (nickname?.trim()) {
+        this.nickname = nickname.trim()
+        this.avatar = generateAvatar(nickname.trim())
+      }
+      if (playerIcon) {
+        this.playerIcon = playerIcon
+      }
+      if (playerColor) {
+        this.playerColor = playerColor
+      }
+      this.profileComplete = true
+      this.notifyProfileUpdate()
+    },
+    
     regenerateAvatar() {
       // Генерируем с случайным сидом для нового варианта
       const seed = this.nickname + Date.now()
@@ -85,7 +132,7 @@ export const useUserStore = defineStore('user', {
     notifyProfileUpdate() {
       // Вызываем коллбэк если он установлен
       if (typeof this._profileUpdateCallback === 'function') {
-        this._profileUpdateCallback(this.userId, this.nickname, this.avatar)
+        this._profileUpdateCallback(this.userId, this.nickname, this.avatar, this.playerIcon, this.playerColor)
       }
     },
     
@@ -155,6 +202,25 @@ export const useUserStore = defineStore('user', {
         this.skillPreferences[characterId].allExpanded = expanded
         this.skillPreferences[characterId].expandedSkills = []
       }
+    },
+
+    // === Инфопанели ===
+    getInfoPanelOpen(screenId) {
+      return this.infoPanelState?.[screenId] ?? false
+    },
+    
+    setInfoPanelOpen(screenId, isOpen) {
+      if (!this.infoPanelState) {
+        this.infoPanelState = {}
+      }
+      this.infoPanelState[screenId] = isOpen
+    },
+    
+    toggleInfoPanel(screenId) {
+      if (!this.infoPanelState) {
+        this.infoPanelState = {}
+      }
+      this.infoPanelState[screenId] = !this.infoPanelState[screenId]
     },
 
     reset() {

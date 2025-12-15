@@ -103,6 +103,18 @@ const sizeMap = {
 
 const pixelSize = computed(() => sizeMap[props.size])
 
+// URL изображения портрета
+// Если это URL (начинается с http:// или https:// или /) - используем напрямую
+// Иначе считаем это пресетом и формируем путь
+const portraitImageUrl = computed(() => {
+  const p = props.portrait
+  if (!p) return null
+  if (typeof p === 'string' && (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('data:'))) {
+    return p
+  }
+  return presetUrl(p)
+})
+
 // Тип здоровья
 const healthType = computed(() => props.combat?.healthType || 'simple')
 
@@ -520,7 +532,7 @@ const totalSize = computed(() => pixelSize.value + defencePadding.value * 2)
       <div class="portrait-image">
         <img 
           v-if="portrait" 
-          :src="presetUrl(portrait)"
+          :src="portraitImageUrl"
           :alt="name"
           class="portrait-img"
           @error="$event.target.style.display = 'none'"

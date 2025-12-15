@@ -16,7 +16,7 @@ import {
 } from '@/utils/selection'
 import { applyFillProfile, generateFillPreview, getFillStats } from '@/utils/randomFill'
 import { getDefenceData } from '@/utils/defence'
-import { drawTokens, preloadTokenImages, loadImage, findTokenAtPoint, canvasToWorld, drawPortrait, drawDefence } from '@/utils/tokenRenderer'
+import { drawTokens, preloadTokenImages, loadImage, findTokenAtPoint, canvasToWorld, drawPortrait, drawDefence, getPortraitUrl } from '@/utils/tokenRenderer'
 import FillProfilePanel from './FillProfilePanel.vue'
 
 // Props
@@ -66,7 +66,32 @@ const {
 } = storeToRefs(battleMapStore)
 
 const { isMaster } = storeToRefs(sessionStore)
-const { characters } = storeToRefs(charactersStore)
+const { characters, npcs, otherTokens } = storeToRefs(charactersStore)
+
+// Все сущности для размещения на карте (персонажи + NPC для мастера)
+const tokensToPlace = computed(() => {
+  const result = [...(characters.value || [])]
+  if (isMaster.value) {
+    const npcsList = npcs.value || []
+    npcsList.forEach(npc => {
+      result.push({
+        ...npc,
+        isNpc: true
+      })
+    })
+  }
+  return result
+})
+
+/**
+ * Проверяет, может ли пользователь управлять токеном
+ * Мастер может управлять всеми токенами
+ */
+const canControlToken = (token) => {
+  if (!token) return false
+  if (isMaster.value) return true
+  return token.character?.ownerId === userStore.userId
+}
 
 // Режим только для чтения (для игроков)
 const isReadonly = computed(() => props.readonly || !isMaster.value)
@@ -87,6 +112,8 @@ const showNewMapDialog = ref(false)
 const showTerrainPalette = ref(false)
 const showSelectionPanel = ref(false) // Панель настроек выделения
 const showFillPanel = ref(false) // Панель профилей заливки
+const showTokenPanel = ref(false) // Панель размещения токенов
+const tokenSearch = ref('') // Поиск по токенам
 const hoveredHex = ref(null)
 const hoveredToken = ref(null) // Токен под курсором
 const selectedToken = ref(null) // Выбранный токен
@@ -146,12 +173,21 @@ const hexGrid = computed(() => {
 const mapTokens = computed(() => {
   if (!activeMap.value || !hexGrid.value) return []
   
+  // Добавляем зависимость от npcs, characters и otherTokens для реактивности
+  const _npcs = npcs.value
+  const _chars = characters.value
+  const _otherTokens = otherTokens.value
+  
   const tokens = battleMapStore.getAllTokens(activeMap.value.id)
   const grid = hexGrid.value
   
   return tokens.map(token => {
     const character = charactersStore.getCharacterById(token.characterId)
-    if (!character) return null
+    if (!character) {
+      // Персонаж не найден - возможно ещё не синхронизирован или удалён
+      // Тихо пропускаем чтобы не спамить консоль
+      return null
+    }
     
     // Конвертируем координаты гекса в пиксели
     const pixelPos = grid.hexToPixel(token.q, token.r)
@@ -720,6 +756,12 @@ const getSnapPoint = (event) => {
 }
 
 const onCanvasMouseMove = (event) => {
+  // Если активен facing picker - обновляем превью направления
+  if (longPressState.value.showFacingPicker) {
+    updateFacingPreview(event.clientX, event.clientY)
+    return
+  }
+  
   if (isDragging.value) {
     const dx = event.clientX - dragStart.value.x
     const dy = event.clientY - dragStart.value.y
@@ -775,8 +817,10 @@ const onCanvasMouseMove = (event) => {
   renderUI()
 }
 
-// Touch события для мобильных устройств
+// === MOUSE события для desktop ===
 
+// Состояние для двойного клика мышью
+const lastMouseClick = ref({ x: 0, y: 0, time: 0 })
 
 const onCanvasMouseDown = (event) => {
   // Закрываем открытые dropdown при клике на canvas
@@ -784,12 +828,38 @@ const onCanvasMouseDown = (event) => {
   showTerrainPalette.value = false
   showSelectionPanel.value = false
   
+  // Если активен facing picker - любой клик подтверждает выбор
+  if (longPressState.value.showFacingPicker) {
+    confirmFacing()
+    event.preventDefault()
+    return
+  }
+  
   if (event.button === 1 || (event.button === 0 && event.shiftKey)) {
     // Middle click or Shift+Left click for panning
     isDragging.value = true
     dragStart.value = { x: event.clientX, y: event.clientY }
     event.preventDefault()
     return
+  }
+  
+  // Правая кнопка мыши - открыть facing picker (аналог long press)
+  // Мастер и игроки могут вращать свои токены
+  if (event.button === 2 && hoveredHex.value) {
+    // Используем ту же функцию, что и инструменты мастера
+    const mouseWorld = getMouseWorld(event);
+    if (!mouseWorld) return;
+    const tokenAtHex = findTokenAtPoint(mouseWorld.x, mouseWorld.y, mapTokens.value, tokenSize.value);
+    const isOwnToken = canControlToken(tokenAtHex);
+    // Для мастера: если клик по токену — всегда режим поворота на месте
+    const rotateInPlace = isMaster.value && tokenAtHex ? true : isOwnToken;
+    if (!tokenAtHex || isOwnToken) {
+      longPressState.value.startPos = { x: event.clientX, y: event.clientY };
+      longPressState.value.targetHex = hoveredHex.value;
+      activateFacingPicker(rotateInPlace);
+      event.preventDefault();
+      return;
+    }
   }
   
   // Мастер может перетаскивать токены
@@ -842,6 +912,27 @@ const onCanvasMouseDown = (event) => {
       return
     }
     
+    // Проверяем двойной клик мышью (для desktop и мастера)
+    if (hoveredHex.value) {
+      const now = Date.now()
+      const last = lastMouseClick.value
+      const dx = event.clientX - last.x
+      const dy = event.clientY - last.y
+      const distance = Math.hypot(dx, dy)
+      
+      if (distance < 20 && (now - last.time) < 400) {
+        // Двойной клик - открываем facing picker для перемещения/вращения
+        longPressState.value.startPos = { x: event.clientX, y: event.clientY }
+        longPressState.value.targetHex = hoveredHex.value
+        activateFacingPicker(false)
+        lastMouseClick.value = { x: 0, y: 0, time: 0 }
+        return
+      }
+      
+      // Сохраняем последний клик
+      lastMouseClick.value = { x: event.clientX, y: event.clientY, time: now }
+    }
+    
     // Сообщаем о выбранном гексе (для мобильной инфокарточки)
     if (hoveredHex.value) {
       emit('hex-selected', getHexWithTerrain(hoveredHex.value))
@@ -883,6 +974,12 @@ const onCanvasMouseDown = (event) => {
 }
 
 const onCanvasMouseUp = (event) => {
+  // Если активен facing picker - подтверждаем выбор (для правой кнопки)
+  if (longPressState.value.showFacingPicker && event.button === 2) {
+    confirmFacing()
+    return
+  }
+  
   // Завершение перетаскивания токена
   if (isDraggingToken.value && draggingToken.value && hexGrid.value && activeMap.value) {
     // Привязываем токен к ближайшему гексу
@@ -1139,7 +1236,8 @@ const longPressState = ref({
   originalFacing: 0,         // Исходное направление персонажа до перемещения
   isDraggingFacing: false,   // Перетаскивает ли палец для выбора направления
   movedToHex: false,         // Персонаж уже перемещён на гекс (ждём только выбор направления)
-  isRotateInPlace: false     // Режим поворота на месте (long press на своём токене)
+  isRotateInPlace: false,    // Режим поворота на месте (long press на своём токене)
+  activeToken: null          // Токен, которым управляем (для мастера)
 })
 
 const LONG_PRESS_DURATION = 400 // ms для активации long press
@@ -1201,9 +1299,6 @@ const getFacingFromAngle = (angleDeg) => {
   
   // Переводим экранный угол в логический facing угол (без offset)
   let logicalAngle = (tokenAngle - facingOffset + 360) % 360
-  
-  // DEBUG
-  console.log(`  getFacingFromAngle: screen=${normalized.toFixed(1)}°, token=${tokenAngle.toFixed(1)}°, offset=${facingOffset}, logical=${logicalAngle.toFixed(1)}°`)
   
   // Находим ближайшее направление простым делением
   const nearestFacing = Math.round(logicalAngle / 30) % 12
@@ -1326,7 +1421,8 @@ const resetLongPressState = () => {
     originalFacing: 0,
     isDraggingFacing: false,
     movedToHex: false,
-    isRotateInPlace: false
+    isRotateInPlace: false,
+    activeToken: null
   }
   renderUI()
 }
@@ -1339,18 +1435,31 @@ const activateFacingPicker = (isRotateInPlace = false) => {
   const hex = longPressState.value.targetHex
   if (!hex) return
   
-  // Проверяем что это режим игрока
-  if (!props.mobileMode) return
-  
   longPressState.value.isActive = true
   longPressState.value.showFacingPicker = true
-  longPressState.value.isDraggingFacing = true // Палец ещё на экране
+  longPressState.value.isDraggingFacing = true // Палец/мышь ещё зажаты
   longPressState.value.isRotateInPlace = isRotateInPlace
   
   // Сохраняем текущее направление персонажа
-  const playerToken = mapTokens.value.find(t => t.character?.ownerId === userStore.userId)
-  longPressState.value.originalFacing = playerToken?.facing || 0
+  // Для мастера: если поворот на месте — токен на гексе, если перемещение — выбранный токен
+  // Для игрока — его токен
+  let activeToken
+  if (isMaster.value) {
+    if (isRotateInPlace) {
+      // Поворот на месте — берём токен на гексе
+      activeToken = mapTokens.value.find(t => t.q === hex.q && t.r === hex.r)
+    } else {
+      // Перемещение — берём выбранный токен
+      activeToken = selectedToken.value
+    }
+  } else {
+    activeToken = mapTokens.value.find(t => t.character?.ownerId === userStore.userId)
+  }
+  longPressState.value.originalFacing = activeToken?.facing || 0
   longPressState.value.previewFacing = longPressState.value.originalFacing // Уже 12 направлений
+  
+  // Запоминаем токен для мастера
+  longPressState.value.activeToken = activeToken
   
   if (!isRotateInPlace) {
     // Перемещаем персонажа на целевой гекс (визуально и в данных)
@@ -1370,22 +1479,30 @@ const activateFacingPicker = (isRotateInPlace = false) => {
 }
 
 /**
- * Обновить превью направления на основе позиции пальца
+ * Обновить превью направления на основе позиции пальца/мыши
+ * @param {number} clientX - event.clientX (экранные координаты)
+ * @param {number} clientY - event.clientY (экранные координаты)
  */
-const updateFacingPreview = (x, y) => {
+const updateFacingPreview = (clientX, clientY) => {
   if (!longPressState.value.showFacingPicker || !longPressState.value.targetHex) return
+  if (!uiCanvas.value) return
   
   const hex = longPressState.value.targetHex
   const grid = hexGrid.value
   if (!grid) return
   
-  // Центр целевого гекса в пикселях экрана
+  // Преобразуем экранные координаты мыши в координаты относительно canvas
+  const rect = uiCanvas.value.getBoundingClientRect()
+  const mouseCanvasX = clientX - rect.left
+  const mouseCanvasY = clientY - rect.top
+  
+  // Центр целевого гекса в canvas-координатах
   const hexCenter = grid.hexToPixel(hex.q, hex.r)
   const screenPos = worldToCanvas(hexCenter.x, hexCenter.y)
   
-  // Вектор от центра гекса к пальцу
-  const dx = x - screenPos.x
-  const dy = y - screenPos.y
+  // Вектор от центра гекса к мыши (оба в canvas-координатах)
+  const dx = mouseCanvasX - screenPos.x
+  const dy = mouseCanvasY - screenPos.y
   const distance = Math.sqrt(dx * dx + dy * dy)
   
   // Если палец в мёртвой зоне - сохраняем исходное направление
@@ -1405,9 +1522,6 @@ const updateFacingPreview = (x, y) => {
   // Получаем направление (0-11)
   const facing12 = getFacingFromAngle(angle)
   
-  // DEBUG
-  console.log(`Angle: ${angle.toFixed(1)}° → facing12: ${facing12} (screen: ${facing12 * 30}°)`)
-  
   longPressState.value.previewFacing = facing12
   
   renderUI()
@@ -1422,6 +1536,38 @@ const confirmFacing = () => {
   const facing12 = longPressState.value.previewFacing
   // Отправляем facing12 напрямую (0-11), без конвертации в 6
   const finalFacing = facing12 !== null ? facing12 : (longPressState.value.originalFacing || 0)
+  
+  // Для мастера - напрямую вращаем токен
+  if (isMaster.value && longPressState.value.isRotateInPlace) {
+    const activeToken = longPressState.value.activeToken
+    if (activeToken && activeMap.value) {
+      battleMapStore.rotateToken(activeMap.value.id, activeToken.q, activeToken.r, finalFacing)
+    }
+    resetLongPressState()
+    return
+  }
+  
+  // Для мастера - перемещение токена с выбором направления
+  if (isMaster.value && !longPressState.value.isRotateInPlace) {
+    const activeToken = longPressState.value.activeToken
+    const targetHex = longPressState.value.targetHex
+    if (activeToken && activeMap.value && targetHex) {
+      // Перемещаем токен
+      const success = battleMapStore.moveToken(
+        activeMap.value.id, 
+        activeToken.q, 
+        activeToken.r, 
+        targetHex.q, 
+        targetHex.r
+      )
+      if (success) {
+        // Устанавливаем направление
+        battleMapStore.rotateToken(activeMap.value.id, targetHex.q, targetHex.r, finalFacing)
+      }
+    }
+    resetLongPressState()
+    return
+  }
   
   if (longPressState.value.isRotateInPlace) {
     // Режим поворота на месте - отправляем событие token-rotate
@@ -1458,9 +1604,10 @@ const drawFacingPicker = (ctx) => {
   const grid = hexGrid.value
   if (!hex || !grid) return
   
-  // Получаем токен игрока для отображения портрета и защиты
-  const playerToken = mapTokens.value.find(t => t.character?.ownerId === userStore.userId)
-  const character = playerToken?.character
+  // Получаем активный токен (для мастера - сохранённый, для игрока - его токен)
+  const activeToken = longPressState.value.activeToken ||
+    mapTokens.value.find(t => t.character?.ownerId === userStore.userId)
+  const character = activeToken?.character
   
   // Центр целевого гекса в мировых координатах
   const hexCenterWorld = grid.hexToPixel(hex.q, hex.r)
@@ -1562,20 +1709,9 @@ const drawFacingPicker = (ctx) => {
     ctx.stroke()
   }
   
-  // 4. Защита персонажа (вращается с preview facing)
-  if (playerToken && (playerToken.meleeDefence || playerToken.rangedDefence)) {
-    drawDefence(
-      ctx, 
-      center.x, 
-      center.y, 
-      portraitRadius, 
-      playerToken.meleeDefence, 
-      playerToken.rangedDefence, 
-      previewRotation, 
-      { bothSides: true }
-    )
-  }
-  
+  // 4. СЛОЙ: Сначала facing picker, потом поверх — защита и портрет
+  // (чтобы портрет и защита были поверх секторов выбора)
+
   // 5. Портрет персонажа в центре
   if (character) {
     drawPortrait(ctx, center.x, center.y, portraitRadius, character.portrait, character.name)
@@ -1588,13 +1724,25 @@ const drawFacingPicker = (ctx) => {
     ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)'
     ctx.lineWidth = 2
     ctx.stroke()
-    
     // Иконка поворота
     ctx.font = '16px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = 'rgba(148, 163, 184, 0.8)'
     ctx.fillText('↻', center.x, center.y)
+  }
+  // 6. Защита персонажа (вращается с preview facing)
+  if (activeToken && (activeToken.meleeDefence || activeToken.rangedDefence)) {
+    drawDefence(
+      ctx, 
+      center.x, 
+      center.y, 
+      portraitRadius, 
+      activeToken.meleeDefence, 
+      activeToken.rangedDefence, 
+      previewRotation, 
+      { bothSides: true }
+    )
   }
 }
 
@@ -1614,7 +1762,7 @@ const onCanvasTouchStart = (event) => {
     }
     touchState.value.isPanning = false
     
-    // Проверяем можно ли начать long press (только в мобильном режиме)
+    // Проверяем можно ли начать long press (в мобильном режиме)
     if (props.mobileMode) {
       const rect = event.target.getBoundingClientRect()
       const canvasX = touch.clientX - rect.left
@@ -1626,9 +1774,9 @@ const onCanvasTouchStart = (event) => {
         const tokenAtHex = findTokenAtPoint(worldPos.x, worldPos.y, mapTokens.value, tokenSize.value)
         
         // Long press для свободных гексов (перемещение с выбором направления)
-        // или для своего токена (поворот на месте)
+        // или для токена, которым можно управлять (поворот на месте)
         if (hex) {
-          const isOwnToken = tokenAtHex && tokenAtHex.character?.ownerId === userStore.userId
+          const isOwnToken = canControlToken(tokenAtHex)
           if (!tokenAtHex || isOwnToken) {
             startLongPress(touch.clientX, touch.clientY, hex, isOwnToken)
           }
@@ -2039,6 +2187,7 @@ const placeTokenOnHex = (characterId, q, r) => {
     // Синхронизируем с игроками если мастер
     if (isMaster.value) {
       sessionStore.broadcastMap()
+      sessionStore.broadcastTokens() // Синхронизируем токены (включая NPC)
     }
   }
   return result
@@ -2225,23 +2374,86 @@ const selectionBehaviorDescriptions = {
           {{ mode === 'select' ? '👆' : mode === 'paint' ? '🖌️' : mode === 'erase' ? '🧹' : '👤' }}
         </button>
         
-        <!-- Список персонажей для размещения (в режиме token) -->
+        <!-- Панель размещения токенов (в режиме token) -->
         <template v-if="editorMode === 'token'">
           <div class="w-px h-6 bg-white/10 mx-1"></div>
-          <div class="flex items-center gap-1">
-            <span class="text-xs text-slate-400 mr-1">Персонажи:</span>
+          <div class="relative">
             <button
-              v-for="char in characters"
-              :key="char.id"
               type="button"
-              class="px-2 py-1 rounded text-xs border border-white/10 hover:bg-white/10 transition truncate max-w-24"
-              :class="battleMapStore.findTokenPosition(activeMap?.id, char.id) ? 'bg-emerald-500/20 border-emerald-400/40' : ''"
-              :title="char.name + (battleMapStore.findTokenPosition(activeMap?.id, char.id) ? ' (на карте)' : ' - клик для размещения')"
-              @click="placeTokenOnSelected(char.id)"
+              class="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition text-xs"
+              :class="showTokenPanel ? 'bg-sky-500/20 border-sky-400/60' : ''"
+              @click.stop="showTokenPanel = !showTokenPanel; showTerrainPalette = false; showSelectionPanel = false; showMapList = false"
             >
-              {{ char.name }}
+              <span>👤</span>
+              <span>Токены ({{ tokensToPlace.length }})</span>
+              <span class="text-slate-400">▼</span>
             </button>
-            <span v-if="!characters.length" class="text-xs text-slate-500 italic">Нет персонажей</span>
+            
+            <!-- Выпадающая панель токенов -->
+            <div
+              v-if="showTokenPanel"
+              class="absolute top-full left-0 mt-1 w-72 bg-slate-800 border border-white/10 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden flex flex-col"
+              @click.stop
+            >
+              <!-- Поиск -->
+              <div class="p-2 border-b border-white/10">
+                <input
+                  v-model="tokenSearch"
+                  type="text"
+                  class="w-full px-2 py-1.5 rounded bg-slate-900 border border-white/10 text-xs placeholder-slate-500"
+                  placeholder="Поиск по имени..."
+                />
+              </div>
+              
+              <!-- Список токенов -->
+              <div class="overflow-y-auto flex-1 p-2">
+                <!-- Игроки -->
+                <div v-if="tokensToPlace.filter(c => !c.isNpc).length" class="mb-3">
+                  <p class="text-xs text-slate-400 mb-1.5 px-1">👥 Игроки</p>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button
+                      v-for="char in tokensToPlace.filter(c => !c.isNpc && (!tokenSearch || c.name.toLowerCase().includes(tokenSearch.toLowerCase())))"
+                      :key="char.id"
+                      type="button"
+                      class="flex items-center gap-2 px-2 py-1.5 rounded text-xs border border-white/10 hover:bg-white/10 transition text-left"
+                      :class="battleMapStore.findTokenPosition(activeMap?.id, char.id) ? 'bg-emerald-500/20 border-emerald-400/40' : ''"
+                      @click="placeTokenOnSelected(char.id)"
+                    >
+                      <span class="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden">
+                        <img v-if="char.portrait" :src="getPortraitUrl(char.portrait)" class="w-full h-full object-cover" />
+                        <span v-else>{{ char.name?.charAt(0)?.toUpperCase() }}</span>
+                      </span>
+                      <span class="truncate flex-1">{{ char.name }}</span>
+                      <span v-if="battleMapStore.findTokenPosition(activeMap?.id, char.id)" class="text-emerald-400">✓</span>
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- NPC -->
+                <div v-if="tokensToPlace.filter(c => c.isNpc).length">
+                  <p class="text-xs text-slate-400 mb-1.5 px-1">👹 NPC</p>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button
+                      v-for="char in tokensToPlace.filter(c => c.isNpc && (!tokenSearch || c.name.toLowerCase().includes(tokenSearch.toLowerCase())))"
+                      :key="char.id"
+                      type="button"
+                      class="flex items-center gap-2 px-2 py-1.5 rounded text-xs border border-amber-500/30 hover:bg-amber-500/10 transition text-left"
+                      :class="battleMapStore.findTokenPosition(activeMap?.id, char.id) ? 'bg-emerald-500/20 border-emerald-400/40' : ''"
+                      @click="placeTokenOnSelected(char.id)"
+                    >
+                      <span class="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden">
+                        <img v-if="char.portrait" :src="getPortraitUrl(char.portrait)" class="w-full h-full object-cover" />
+                        <span v-else>{{ char.name?.charAt(0)?.toUpperCase() }}</span>
+                      </span>
+                      <span class="truncate flex-1">{{ char.name }}</span>
+                      <span v-if="battleMapStore.findTokenPosition(activeMap?.id, char.id)" class="text-emerald-400">✓</span>
+                    </button>
+                  </div>
+                </div>
+                
+                <p v-if="!tokensToPlace.length" class="text-xs text-slate-500 italic text-center py-4">Нет персонажей</p>
+              </div>
+            </div>
           </div>
         </template>
         

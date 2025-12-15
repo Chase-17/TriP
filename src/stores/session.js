@@ -49,6 +49,10 @@ export const useSessionStore = defineStore('session', {
     reconnectTimer: null,
     masterProfile: null, // Профиль мастера для игроков
     
+    // Все игроки, которые когда-либо подключались (персистентно)
+    // { userId, alias, avatar, lastSeen, characterId }
+    knownPlayers: [],
+    
     // Сплеш-сообщения (очередь для отображения)
     splashQueue: [],
     currentSplash: null,
@@ -58,7 +62,7 @@ export const useSessionStore = defineStore('session', {
   }),
   persist: {
     key: 'trip-session-v1',
-    paths: ['role', 'roomId', 'messages'],
+    paths: ['role', 'roomId', 'messages', 'knownPlayers'],
     afterRestore: (ctx) => {
       ctx.store.status = 'idle'
       ctx.store.peer = null
@@ -70,6 +74,19 @@ export const useSessionStore = defineStore('session', {
       ctx.store.messages = Array.isArray(ctx.store.messages)
         ? ctx.store.messages.slice(-MAX_PERSISTED_MESSAGES)
         : []
+      
+      // Обработчик закрытия страницы - корректно уничтожаем peer
+      const handleBeforeUnload = () => {
+        if (ctx.store.peer) {
+          try {
+            ctx.store.peer.destroy()
+          } catch (_) {}
+        }
+      }
+      
+      // Удаляем старый обработчик если был
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.addEventListener('beforeunload', handleBeforeUnload)
       
       // Автоматическое переподключение после восстановления состояния
       if (ctx.store.role && ctx.store.roomId) {
@@ -143,6 +160,55 @@ export const useSessionStore = defineStore('session', {
       }
       
       return profiles
+    },
+    
+    // Все игроки: онлайн + известные офлайн
+    allPlayers(state) {
+      const charactersStore = useCharactersStore()
+      const onlineIds = new Set(state.connections.map(c => c.userId))
+      
+      // Начинаем с онлайн игроков
+      const players = state.connections.map(conn => {
+        const chars = charactersStore.getCharactersByUserId(conn.userId)
+        const mainChar = chars.length > 0 ? chars[0] : null
+        // Ищем данные в knownPlayers для получения playerIcon/playerColor
+        const knownPlayer = state.knownPlayers.find(kp => kp.userId === conn.userId)
+        return {
+          userId: conn.userId,
+          peerId: conn.peerId,
+          alias: conn.alias,
+          avatar: conn.avatar,
+          playerIcon: conn.playerIcon || knownPlayer?.playerIcon || null,
+          playerColor: conn.playerColor || knownPlayer?.playerColor || null,
+          online: true,
+          characterId: mainChar?.id || null,
+          characterName: mainChar?.name || null,
+          characterPortrait: mainChar?.portrait || null
+        }
+      })
+      
+      // Добавляем офлайн игроков из knownPlayers
+      state.knownPlayers.forEach(kp => {
+        if (!onlineIds.has(kp.userId)) {
+          const chars = charactersStore.getCharactersByUserId(kp.userId)
+          const mainChar = chars.length > 0 ? chars[0] : null
+          players.push({
+            userId: kp.userId,
+            peerId: null,
+            alias: kp.alias,
+            avatar: kp.avatar,
+            playerIcon: kp.playerIcon || null,
+            playerColor: kp.playerColor || null,
+            online: false,
+            lastSeen: kp.lastSeen,
+            characterId: mainChar?.id || kp.characterId || null,
+            characterName: mainChar?.name || null,
+            characterPortrait: mainChar?.portrait || null
+          })
+        }
+      })
+      
+      return players
     }
   },
   actions: {
@@ -216,6 +282,25 @@ export const useSessionStore = defineStore('session', {
       
       this.activeConnection.send(payload)
       console.log('Отправлен ответ на реакцию:', payload)
+    },
+    
+    // Отправка уведомления об использовании приглашения на создание персонажа (для игрока)
+    sendInviteUsed(inviteId, usage) {
+      if (!this.activeConnection?.open) {
+        console.warn('Нет активного соединения для отправки уведомления об использовании приглашения')
+        return
+      }
+      
+      const payload = {
+        id: createId(),
+        type: 'invite-used',
+        inviteId,
+        usage,
+        time: Date.now()
+      }
+      
+      this.activeConnection.send(payload)
+      console.log('Отправлено уведомление об использовании приглашения:', payload)
     },
     
     // Отправка предложения реакции игроку (для мастера)
@@ -345,8 +430,8 @@ export const useSessionStore = defineStore('session', {
       
       // Устанавливаем коллбэк для уведомления об изменениях профиля
       const userStore = useUserStore()
-      userStore.setProfileUpdateCallback((userId, nickname, avatar) => {
-        this.broadcastProfileUpdate(userId, nickname, avatar)
+      userStore.setProfileUpdateCallback((userId, nickname, avatar, playerIcon, playerColor) => {
+        this.broadcastProfileUpdate(userId, nickname, avatar, playerIcon, playerColor)
       })
       
       peer.on('open', (id) => {
@@ -368,10 +453,42 @@ export const useSessionStore = defineStore('session', {
       })
       
       peer.on('error', (err) => {
-        this.error = err?.message ?? String(err)
+        const errorMessage = err?.message ?? String(err)
+        this.error = errorMessage
         this.status = 'error'
         
-        // Попытка переподключения при ошибке
+        // Специальная обработка ошибки "ID is taken"
+        if (errorMessage.includes('is taken') || errorMessage.includes('ID is taken')) {
+          console.log('[Session] ID is taken, will retry with delay...')
+          
+          // Уничтожаем текущий peer
+          if (this.peer) {
+            try {
+              this.peer.destroy()
+            } catch (_) {}
+            this.peer = null
+          }
+          
+          // Ждём дольше перед повторной попыткой (сервер PeerJS освобождает ID через ~10 сек)
+          if (this.reconnectAttempts < 5) {
+            this.clearReconnectTimer()
+            const delay = Math.max(3000, 2000 * (this.reconnectAttempts + 1)) // 3, 4, 6, 8, 10 сек
+            this.reconnectAttempts += 1
+            this.addMessage(systemMessage(`ID занят, повторная попытка через ${Math.round(delay / 1000)} сек...`))
+            this.reconnectTimer = setTimeout(() => {
+              this.createRoom()
+            }, delay)
+          } else {
+            // После 5 попыток - создаём новую комнату с новым ID
+            this.addMessage(systemMessage('Не удалось восстановить комнату. Создаём новую...'))
+            this.roomId = ''
+            this.reconnectAttempts = 0
+            setTimeout(() => this.createRoom(), 1000)
+          }
+          return
+        }
+        
+        // Попытка переподключения при других ошибках
         if (this.reconnectAttempts < 5) {
           this.scheduleReconnect()
         } else {
@@ -417,6 +534,9 @@ export const useSessionStore = defineStore('session', {
         this.addMessage(systemMessage(`${alias} подключился к комнате.`))
         conn.send(systemMessage('Вы в комнате. Поприветствуйте остальных!'))
         
+        // Добавляем/обновляем в knownPlayers
+        this.updateKnownPlayer(userId, alias, avatar)
+        
         // Отправляем игроку свой профиль
         const userStore = useUserStore()
         const masterProfilePayload = {
@@ -460,6 +580,13 @@ export const useSessionStore = defineStore('session', {
           // Ответ игрока на предложение реакции
           console.log('Получен ответ на реакцию от игрока:', payload)
           this.triggerMessageHandlers('reaction-response', { ...payload, playerPeerId: conn.peer })
+        } else if (payload.type === 'invite-used') {
+          // Игрок использовал приглашение на создание персонажа
+          console.log('[Session Master] Получено уведомление об использовании приглашения:', payload)
+          const sceneLogStore = useSceneLogStore()
+          sceneLogStore.markInviteUsed(payload.inviteId, payload.usage)
+          // Рассылаем всем игрокам чтобы они видели обновление
+          this.broadcastPayload(payload, conn.peer)
         } else if (payload.type === 'skill-check-result') {
           // Результат проверки навыка от игрока
           console.log('[Session Master] Получен результат проверки:', payload)
@@ -514,6 +641,10 @@ export const useSessionStore = defineStore('session', {
       }
       this.disconnect({ resetRole: false })
       
+      // Очищаем персонажей других игроков из localStorage
+      const charactersStore = useCharactersStore()
+      charactersStore.cleanupOtherPlayersCharacters()
+      
       // Сохраняем сообщения при переподключении
       const wasReconnect = this.roomId === trimmed && this.messages.length > 0
       
@@ -529,8 +660,8 @@ export const useSessionStore = defineStore('session', {
       
       // Устанавливаем коллбэк для уведомления об изменениях профиля
       const userStore = useUserStore()
-      userStore.setProfileUpdateCallback((userId, nickname, avatar) => {
-        this.broadcastProfileUpdate(userId, nickname, avatar)
+      userStore.setProfileUpdateCallback((userId, nickname, avatar, playerIcon, playerColor) => {
+        this.broadcastProfileUpdate(userId, nickname, avatar, playerIcon, playerColor)
       })
       
       peer.on('open', (id) => {
@@ -597,6 +728,16 @@ export const useSessionStore = defineStore('session', {
         } else if (payload.type === 'scene-event-hide') {
           // Мастер скрывает событие от этого игрока
           this.triggerMessageHandlers('scene-event-hide', payload)
+        } else if (payload.type === 'scene-clear') {
+          // Мастер очистил лог - очищаем и у игрока
+          const sceneLogStore = useSceneLogStore()
+          sceneLogStore.clearAllEvents(false) // false = не отправлять обратно
+          console.log('[Session] Scene log cleared by master')
+        } else if (payload.type === 'scene-remove-events') {
+          // Мастер удалил конкретные события
+          const sceneLogStore = useSceneLogStore()
+          sceneLogStore.removeEvents(payload.eventIds, false)
+          console.log('[Session] Events removed by master:', payload.eventIds?.length)
         } else if (payload.type === 'splash') {
           this.handleSplash(payload)
         } else if (payload.type === 'action-error') {
@@ -608,6 +749,11 @@ export const useSessionStore = defineStore('session', {
         } else if (payload.type === 'scene-event') {
           // Событие сцены от мастера или другого игрока
           this.triggerMessageHandlers('scene-event', payload)
+        } else if (payload.type === 'invite-used') {
+          // Другой игрок использовал приглашение - обновляем локально
+          console.log('[Session Player] Получено уведомление об использовании приглашения:', payload)
+          const sceneLogStore = useSceneLogStore()
+          sceneLogStore.markInviteUsed(payload.inviteId, payload.usage)
         } else if (payload.type === 'chat') {
           if (!this.masterProfile && payload.userId) {
             this.masterProfile = {
@@ -666,6 +812,70 @@ export const useSessionStore = defineStore('session', {
         this.activeConnection.send(payload)
       }
     },
+    
+    /**
+     * Отправить всех персонажей всем игрокам (для синхронизации после создания/обновления)
+     */
+    broadcastAllCharacters() {
+      if (this.role !== 'master') return
+      if (!this.connections.length) return
+      
+      const charactersStore = useCharactersStore()
+      
+      // Собираем персонажей игроков для отправки
+      const playerCharacters = charactersStore.characters
+        .filter(c => !c.isNpc)
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          portrait: c.portrait,
+          ownerId: c.ownerId,
+          ownerNickname: c.ownerNickname,
+          isNpc: false,
+          combat: c.combat,
+          stats: c.stats,
+          health: c.health,
+          class: c.class,
+          race: c.race,
+          gender: c.gender,
+          skills: c.skills
+        }))
+      
+      // Собираем видимых NPC для отправки
+      const visibleNpcs = charactersStore.npcs
+        .filter(n => n.visibleToPlayers !== false)
+        .map(n => ({
+          id: n.id,
+          name: n.name,
+          portrait: n.portrait,
+          ownerId: 'master',
+          isNpc: true,
+          npcType: n.npcType,
+          combat: n.combat,
+          stats: n.stats,
+          health: n.health,
+          class: n.class,
+          race: n.race,
+          gender: n.gender,
+          factions: n.factions,
+          skills: n.skills
+        }))
+      
+      const charactersForPlayer = [...playerCharacters, ...visibleNpcs]
+      
+      console.log('[Session] Broadcasting all characters:', charactersForPlayer.length)
+      
+      const payload = {
+        id: createId(),
+        type: 'character-sync',
+        action: 'all-characters',
+        characters: charactersForPlayer,
+        time: Date.now()
+      }
+      
+      this.broadcastPayload(payload)
+    },
+    
     broadcastPayload(payload, excludePeer) {
       if (!this.connections.length) return
       this.connections.forEach((entry) => {
@@ -675,9 +885,37 @@ export const useSessionStore = defineStore('session', {
         }
       })
     },
+    
+    // Обновить/добавить игрока в список известных
+    updateKnownPlayer(userId, alias, avatar, playerIcon, playerColor) {
+      const existing = this.knownPlayers.find(p => p.userId === userId)
+      if (existing) {
+        existing.alias = alias
+        existing.avatar = avatar
+        if (playerIcon !== undefined) existing.playerIcon = playerIcon
+        if (playerColor !== undefined) existing.playerColor = playerColor
+        existing.lastSeen = Date.now()
+      } else {
+        this.knownPlayers.push({
+          userId,
+          alias,
+          avatar,
+          playerIcon: playerIcon || null,
+          playerColor: playerColor || null,
+          lastSeen: Date.now(),
+          characterId: null
+        })
+      }
+    },
+    
+    // Удалить игрока из списка известных
+    removeKnownPlayer(userId) {
+      this.knownPlayers = this.knownPlayers.filter(p => p.userId !== userId)
+    },
+    
     handleProfileUpdate(payload) {
       // Обновляем профиль пользователя в connections
-      const { userId, nickname, avatar } = payload
+      const { userId, nickname, avatar, playerIcon, playerColor } = payload
       if (!userId) return
       
       if (this.role === 'master') {
@@ -686,8 +924,13 @@ export const useSessionStore = defineStore('session', {
         if (connection) {
           if (nickname !== undefined) connection.alias = nickname
           if (avatar !== undefined) connection.avatar = avatar
+          if (playerIcon !== undefined) connection.playerIcon = playerIcon
+          if (playerColor !== undefined) connection.playerColor = playerColor
           
           this.addMessage(systemMessage(`${nickname} обновил профиль.`))
+          
+          // Также обновляем knownPlayers
+          this.updateKnownPlayer(userId, nickname, avatar, playerIcon, playerColor)
         }
       } else if (this.role === 'player') {
         // Игрок обновляет данные мастера
@@ -703,13 +946,15 @@ export const useSessionStore = defineStore('session', {
         }
       }
     },
-    broadcastProfileUpdate(userId, nickname, avatar) {
+    broadcastProfileUpdate(userId, nickname, avatar, playerIcon, playerColor) {
       const payload = {
         id: createId(),
         type: 'profile-update',
         userId,
         nickname,
         avatar,
+        playerIcon,
+        playerColor,
         time: Date.now()
       }
       
@@ -773,17 +1018,16 @@ export const useSessionStore = defineStore('session', {
       
       const charactersStore = useCharactersStore()
       
-      // Собираем персонажей для отправки
-      const charactersForPlayer = charactersStore.characters
-        .filter(c => !c.isNpc || c.visibleToPlayers)
+      // Собираем персонажей игроков для отправки
+      const playerCharacters = charactersStore.characters
+        .filter(c => !c.isNpc)
         .map(c => ({
           id: c.id,
           name: c.name,
           portrait: c.portrait,
           ownerId: c.ownerId,
           ownerNickname: c.ownerNickname,
-          isNpc: c.isNpc,
-          npcType: c.npcType,
+          isNpc: false,
           combat: c.combat,
           stats: c.stats,
           class: c.class,
@@ -791,7 +1035,27 @@ export const useSessionStore = defineStore('session', {
           gender: c.gender
         }))
       
-      console.log('[Session] Sending characters to player:', charactersForPlayer.length)
+      // Собираем видимых NPC для отправки
+      const visibleNpcs = charactersStore.npcs
+        .filter(n => n.visibleToPlayers !== false)
+        .map(n => ({
+          id: n.id,
+          name: n.name,
+          portrait: n.portrait,
+          ownerId: 'master',
+          isNpc: true,
+          npcType: n.npcType,
+          combat: n.combat,
+          stats: n.stats,
+          class: n.class,
+          race: n.race,
+          gender: n.gender,
+          factions: n.factions
+        }))
+      
+      const charactersForPlayer = [...playerCharacters, ...visibleNpcs]
+      
+      console.log('[Session] Sending characters to player:', charactersForPlayer.length, '(players:', playerCharacters.length, ', npcs:', visibleNpcs.length, ')')
       conn.send({
         id: createId(),
         type: 'character-sync',
@@ -803,7 +1067,7 @@ export const useSessionStore = defineStore('session', {
     
     /**
      * Отправить события сцены одному подключению (при подключении/переподключении)
-     * Фильтрует события для этого конкретного пользователя
+     * Фильтрует события для этого конкретного пользователя и его персонажей
      */
     sendSceneEventsToConnection(conn, userId) {
       if (!conn?.open) {
@@ -812,21 +1076,50 @@ export const useSessionStore = defineStore('session', {
       }
       
       const sceneLogStore = useSceneLogStore()
+      const charactersStore = useCharactersStore()
+      
+      // Получаем ID персонажей этого игрока
+      const playerCharacterIds = charactersStore.characters
+        .filter(c => c.ownerId === userId && !c.isNpc)
+        .map(c => c.id)
       
       // Фильтруем события, которые должны быть видны этому игроку
       const eventsForPlayer = sceneLogStore.events.filter(event => {
+        // Если игрок в hiddenFrom - не показываем
+        if (event.hiddenFrom && event.hiddenFrom.includes(userId)) {
+          return false
+        }
+        
         // Секретные события только для целевого пользователя
         if (event.isSecret && event.targetUserId !== userId && event.targetUserId !== 'all') {
           return false
         }
-        // События с targetUserIds - только если игрок в списке
+        
+        // События с targetCharacterIds - показываем если персонаж игрока в списке
+        if (event.targetCharacterIds && Array.isArray(event.targetCharacterIds)) {
+          const hasPlayerCharacter = event.targetCharacterIds.some(charId => 
+            playerCharacterIds.includes(charId)
+          )
+          if (!hasPlayerCharacter) return false
+        }
+        
+        // События с targetUserIds (старый формат) - только если игрок в списке
         if (event.targetUserIds && Array.isArray(event.targetUserIds) && !event.targetUserIds.includes(userId)) {
           return false
         }
+        
         return true
       })
       
-      console.log('[Session] Sending scene events to player:', eventsForPlayer.length)
+      console.log('[Session] Sending scene events to player:', eventsForPlayer.length, 'for characters:', playerCharacterIds.length)
+      
+      // Помечаем события как доставленные
+      eventsForPlayer.forEach(event => {
+        if (!event.deliveredTo) event.deliveredTo = []
+        if (!event.deliveredTo.includes(userId)) {
+          event.deliveredTo.push(userId)
+        }
+      })
       
       // Отправляем события с пометкой о синхронизации
       conn.send({
@@ -899,46 +1192,6 @@ export const useSessionStore = defineStore('session', {
         time: Date.now()
       }
       
-      this.broadcastPayload(payload)
-    },
-    
-    /**
-     * Отправить всех персонажей игрокам (для синхронизации)
-     * Включает персонажей других игроков и видимых NPC мастера
-     */
-    broadcastAllCharacters() {
-      if (this.role !== 'master') return
-      
-      const charactersStore = useCharactersStore()
-      
-      // Собираем всех персонажей для отправки игрокам
-      // Персонажи игроков - всегда видны, NPC - только если visibleToPlayers = true
-      const charactersForPlayers = charactersStore.characters
-        .filter(c => !c.isNpc || c.visibleToPlayers)
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          portrait: c.portrait,
-          ownerId: c.ownerId,
-          ownerNickname: c.ownerNickname,
-          isNpc: c.isNpc,
-          npcType: c.npcType,
-          combat: c.combat,
-          stats: c.stats,
-          class: c.class,
-          race: c.race,
-          gender: c.gender
-        }))
-      
-      const payload = {
-        id: createId(),
-        type: 'character-sync',
-        action: 'all-characters',
-        characters: charactersForPlayers,
-        time: Date.now()
-      }
-      
-      console.log('[Session] Broadcasting all characters to players:', charactersForPlayers.length)
       this.broadcastPayload(payload)
     },
 
@@ -1016,19 +1269,19 @@ export const useSessionStore = defineStore('session', {
       }
       
       // Используем peerId как fallback для идентификации
-      const oderId = userStore.userId || this.peerId
+      const ownerId = userStore.userId || this.peerId
       const nickname = userStore.nickname || 'Игрок'
       
       // Получаем всех персонажей пользователя (не NPC)
       const characters = charactersStore.myCharacters.map(c => ({ 
         ...c,
         // Проставляем ownerId если он пуст
-        ownerId: c.ownerId || oderId,
+        ownerId: c.ownerId || ownerId,
         ownerNickname: c.ownerNickname || nickname
       }))
       
       console.log('[Session] sendCharactersToMaster:', {
-        oderId,
+        ownerId,
         nickname,
         charactersCount: characters.length,
         characters
@@ -1039,7 +1292,7 @@ export const useSessionStore = defineStore('session', {
         type: 'character-sync',
         action: 'player-characters',
         characters,
-        ownerId: oderId,
+        ownerId,
         ownerNickname: nickname,
         time: Date.now()
       })
@@ -1066,21 +1319,29 @@ export const useSessionStore = defineStore('session', {
     },
     
     /**
-     * Отправить уведомление об удалении персонажа мастеру
+     * Отправить уведомление об удалении персонажа
+     * - Игрок отправляет мастеру
+     * - Мастер отправляет всем игрокам (broadcast)
      */
     sendCharacterDelete(characterId) {
-      if (this.role !== 'player' || !this.activeConnection?.open) return
-      
       const userStore = useUserStore()
       
-      this.activeConnection.send({
+      const payload = {
         id: createId(),
         type: 'character-sync',
         action: 'delete',
         characterId,
-        ownerId: userStore.oderId || userStore.oderId,
+        ownerId: userStore.userId,
         time: Date.now()
-      })
+      }
+      
+      if (this.role === 'master') {
+        // Мастер отправляет всем игрокам
+        this.broadcastPayload(payload)
+      } else if (this.activeConnection?.open) {
+        // Игрок отправляет мастеру
+        this.activeConnection.send(payload)
+      }
     },
     
     /**
@@ -1117,13 +1378,20 @@ export const useSessionStore = defineStore('session', {
       // Собираем публичную информацию о всех токенах
       const allTokens = [
         ...charactersStore.allPlayerCharacters.filter(c => c.combat?.position).map(c => charactersStore.serializeTokenInfo(c.id)),
-        ...charactersStore.npcs.filter(n => n.combat?.position).map(n => ({
+        ...charactersStore.npcs.filter(n => n.combat?.position && n.visibleToPlayers !== false).map(n => ({
           id: n.id,
           name: n.name,
           portrait: n.portrait,
           position: n.combat.position,
+          stats: n.stats,
+          combat: {
+            healthType: n.combat?.healthType,
+            wounds: n.combat?.wounds,
+            bonusDeadlySlots: n.combat?.bonusDeadlySlots
+          },
           isNpc: true,
-          npcType: n.npcType
+          npcType: n.npcType,
+          factions: n.factions
         }))
       ].filter(Boolean)
       
@@ -1171,6 +1439,9 @@ export const useSessionStore = defineStore('session', {
               ownerNickname: payload.ownerNickname
             })
           })
+          
+          // Отправляем всех персонажей всем игрокам для синхронизации
+          this.broadcastAllCharacters()
         } else if (payload.action === 'update' && payload.character) {
           charactersStore.applyReceivedCharacter(payload.character)
         } else if (payload.action === 'delete' && payload.characterId) {
@@ -1182,10 +1453,35 @@ export const useSessionStore = defineStore('session', {
         if (payload.action === 'your-character-update' && payload.character) {
           console.log('[Session] Received character update from master')
           charactersStore.applyReceivedCharacter(payload.character)
+        } else if (payload.action === 'delete' && payload.characterId) {
+          // Мастер удалил персонажа или NPC
+          console.log('[Session] Master deleted character/NPC:', payload.characterId)
+          charactersStore.deleteCharacter(payload.characterId)
+          charactersStore.deleteNpc(payload.characterId)
         } else if (payload.action === 'all-characters' && payload.characters) {
           // Получаем всех персонажей от мастера (другие игроки и видимые NPC)
           console.log('[Session] Received all characters from master:', payload.characters.length)
           const userStore = useUserStore()
+          
+          // Собираем ID полученных персонажей
+          const receivedIds = new Set(payload.characters.map(c => c.id))
+          
+          // Удаляем персонажей которых больше нет (кроме своих)
+          const toRemove = charactersStore.characters
+            .filter(c => c.ownerId !== userStore.userId && !receivedIds.has(c.id))
+            .map(c => c.id)
+          toRemove.forEach(id => charactersStore.deleteCharacter(id))
+          
+          // Также удаляем NPC которых больше нет
+          const npcToRemove = charactersStore.npcs
+            .filter(n => !receivedIds.has(n.id))
+            .map(n => n.id)
+          npcToRemove.forEach(id => charactersStore.deleteNpc(id))
+          
+          // Удаляем из otherTokens токены которых больше нет
+          charactersStore.otherTokens = charactersStore.otherTokens.filter(t => 
+            t.ownerId === userStore.userId || receivedIds.has(t.id)
+          )
           
           // Применяем персонажей других игроков и NPC
           payload.characters.forEach(char => {
@@ -1195,9 +1491,11 @@ export const useSessionStore = defineStore('session', {
             }
           })
         } else if (payload.action === 'tokens' && payload.tokens) {
-          // Обновляем информацию о токенах других игроков
+          // Обновляем информацию о токенах других игроков и NPC
+          // Фильтруем только своих персонажей, NPC (isNpc=true) пропускаем
+          const userStore = useUserStore()
           charactersStore.updateOtherTokens(payload.tokens.filter(t => 
-            t.ownerId !== useUserStore().userId
+            t.isNpc || t.ownerId !== userStore.userId
           ))
         }
       }

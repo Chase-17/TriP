@@ -490,26 +490,14 @@ const classTraits = computed(() => {
 const aspectTraits = computed(() => {
   if (!selectedClass.value) return [[], []]
   
-  // Get traits from aspect edges
-  const traits1 = []
-  const traits2 = []
-  
-  // For now, we'll get the aspect traits from the aspects themselves
-  // You might need to adjust this based on your actual data structure
+  // Get traits directly from aspects
   const aspect1 = aspects.find(a => a.id === connectedAspects.value[0])
   const aspect2 = aspects.find(a => a.id === connectedAspects.value[1])
   
-  // Find classes that belong to each aspect and collect their traits
-  classes.forEach(cls => {
-    if (cls.aspects.includes(connectedAspects.value[0]) && cls.id !== props.classId) {
-      traits1.push(...cls.traits)
-    }
-    if (cls.aspects.includes(connectedAspects.value[1]) && cls.id !== props.classId) {
-      traits2.push(...cls.traits)
-    }
-  })
+  const traits1 = aspect1?.traits || []
+  const traits2 = aspect2?.traits || []
   
-  return [traits1.slice(0, 3), traits2.slice(0, 3)]
+  return [traits1, traits2]
 })
 
 function getAspect(id) {

@@ -17,7 +17,7 @@ const generateId = () => {
  */
 const createEmptyCharacter = (ownerId, options = {}) => ({
   id: generateId(),
-  ownerId,              // ID игрока-владельца (peerId или oderId)
+  ownerId,              // ID игрока-владельца (peerId или userId)
   ownerNickname: options.ownerNickname || 'Игрок',
   
   // Базовая информация
@@ -147,10 +147,14 @@ export const useCharactersStore = defineStore('characters', {
     },
     
     /**
-     * Активный персонаж
+     * Активный персонаж (включая NPC для мастера)
      */
     activeCharacter: (state) => {
-      return state.characters.find(c => c.id === state.activeCharacterId) || null
+      // Сначала ищем в персонажах
+      const char = state.characters.find(c => c.id === state.activeCharacterId)
+      if (char) return char
+      // Потом в NPC
+      return state.npcs.find(n => n.id === state.activeCharacterId) || null
     },
     
     /**
@@ -192,7 +196,16 @@ export const useCharactersStore = defineStore('characters', {
      * Получить персонажа по ID
      */
     getCharacterById: (state) => (characterId) => {
-      return state.characters.find(c => c.id === characterId) || null
+      if (!characterId) return null
+      // Сначала ищем среди персонажей
+      const char = state.characters.find(c => c.id === characterId)
+      if (char) return char
+      // Потом среди NPC мастера
+      const npc = state.npcs.find(n => n.id === characterId)
+      if (npc) return npc
+      // Потом среди токенов других игроков (для отображения на карте)
+      const token = state.otherTokens.find(t => t.id === characterId)
+      return token || null
     },
     
     /**
@@ -207,6 +220,20 @@ export const useCharactersStore = defineStore('characters', {
      */
     allPlayerCharacters: (state) => {
       return state.characters.filter(c => !c.isNpc)
+    },
+    
+    /**
+     * Все NPC мастера
+     */
+    allNpcs: (state) => {
+      return state.npcs
+    },
+    
+    /**
+     * Получить NPC по ID
+     */
+    getNpcById: (state) => (npcId) => {
+      return state.npcs.find(n => n.id === npcId) || null
     }
   },
   
@@ -259,14 +286,22 @@ export const useCharactersStore = defineStore('characters', {
     },
     
     /**
-     * Обновить персонажа
+     * Обновить персонажа (или NPC)
      */
     updateCharacter(characterId, updates) {
-      const character = this.characters.find(c => c.id === characterId)
+      // Сначала ищем в персонажах
+      let character = this.characters.find(c => c.id === characterId)
       if (character) {
         Object.assign(character, updates, { updatedAt: Date.now() })
+        return character
       }
-      return character
+      // Потом в NPC
+      character = this.npcs.find(n => n.id === characterId)
+      if (character) {
+        Object.assign(character, updates, { updatedAt: Date.now() })
+        return character
+      }
+      return null
     },
     
     /**
@@ -276,8 +311,39 @@ export const useCharactersStore = defineStore('characters', {
       const index = this.characters.findIndex(c => c.id === characterId)
       if (index !== -1) {
         this.characters.splice(index, 1)
+        
+        // Если удалённый персонаж был активным, переключаемся на первого из своих
         if (this.activeCharacterId === characterId) {
-          this.activeCharacterId = this.characters[0]?.id || null
+          const userStore = useUserStore()
+          const myChars = this.characters.filter(c => c.ownerId === userStore.userId && !c.isNpc)
+          this.activeCharacterId = myChars[0]?.id || null
+        }
+      }
+    },
+    
+    /**
+     * Очистить персонажей других игроков из локального хранилища
+     * Вызывается при входе в комнату как игрок
+     */
+    cleanupOtherPlayersCharacters() {
+      const userStore = useUserStore()
+      const userId = userStore.userId
+      
+      // Оставляем только своих персонажей и NPC
+      const before = this.characters.length
+      this.characters = this.characters.filter(c => c.ownerId === userId || c.isNpc)
+      const removed = before - this.characters.length
+      
+      if (removed > 0) {
+        console.log('[Characters] Cleaned up', removed, 'other players characters from localStorage')
+      }
+      
+      // Сбрасываем activeCharacterId если он указывает на удалённого персонажа
+      if (this.activeCharacterId) {
+        const exists = this.characters.find(c => c.id === this.activeCharacterId)
+        if (!exists) {
+          const myChars = this.characters.filter(c => c.ownerId === userId && !c.isNpc)
+          this.activeCharacterId = myChars[0]?.id || null
         }
       }
     },

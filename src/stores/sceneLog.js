@@ -55,7 +55,17 @@ const createEventId = () => {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
-const MAX_EVENTS = 500
+// Максимум событий в памяти (localStorage лимит ~5MB)
+const MAX_EVENTS = 3000
+
+// Сколько событий показывать в DOM за раз
+const PAGE_SIZE = 50
+
+// Debounce для persist (мс)
+const PERSIST_DEBOUNCE = 2000
+
+// Таймер для debounce persist
+let persistTimer = null
 
 export const useSceneLogStore = defineStore('sceneLog', {
   state: () => ({
@@ -68,25 +78,113 @@ export const useSceneLogStore = defineStore('sceneLog', {
     // Активный фильтр
     activeFilter: SceneFilters.ALL,
     
+    // Перспектива мастера - от имени какого игрока смотреть (null = всё)
+    perspectiveUserId: null,
+    
     // Время последнего взаимодействия с инфопанелью
     lastInfoPanelInteraction: Date.now(),
     
     // Автосворачивание инфопанели (таймаут в мс)
     infoPanelAutoHideTimeout: 10000, // 10 секунд
+    
+    // === Пагинация ===
+    // Сколько страниц загружено (показываем PAGE_SIZE * loadedPages событий)
+    loadedPages: 1,
+    
+    // Флаг для отложенного сохранения
+    _pendingPersist: false,
   }),
   
   persist: {
-    key: 'trip-scene-log-v1',
-    paths: ['events', 'currentImage', 'activeFilter']
+    key: 'trip-scene-log-v2',
+    paths: ['events', 'currentImage', 'activeFilter'],
+    // Кастомный сериализатор с защитой от слишком большого лога
+    serializer: {
+      serialize: (state) => {
+        try {
+          // Если событий слишком много, сохраняем только последние MAX_EVENTS
+          const eventsToSave = state.events?.length > MAX_EVENTS 
+            ? state.events.slice(-MAX_EVENTS)
+            : state.events
+          
+          const dataToSave = {
+            ...state,
+            events: eventsToSave
+          }
+          
+          return JSON.stringify(dataToSave)
+        } catch (e) {
+          console.error('[SceneLog] Serialize error:', e)
+          return JSON.stringify({ events: [], currentImage: null, activeFilter: 'all' })
+        }
+      },
+      deserialize: (value) => {
+        try {
+          return JSON.parse(value)
+        } catch (e) {
+          console.error('[SceneLog] Deserialize error:', e)
+          return { events: [], currentImage: null, activeFilter: 'all' }
+        }
+      }
+    },
+    // Миграция со старой версии
+    beforeRestore: (ctx) => {
+      try {
+        const oldData = localStorage.getItem('trip-scene-log-v1')
+        if (oldData && !localStorage.getItem('trip-scene-log-v2')) {
+          localStorage.setItem('trip-scene-log-v2', oldData)
+          localStorage.removeItem('trip-scene-log-v1')
+        }
+      } catch (e) {
+        console.warn('[SceneLog] Migration failed:', e)
+      }
+    }
   },
   
   getters: {
     /**
      * Отфильтрованные события
+     * Учитывает как тип события (activeFilter), так и перспективу (perspectiveUserId)
      */
     filteredEvents: (state) => {
+      let events = state.events
+      
+      // Фильтр по перспективе (для мастера - от имени какого игрока смотреть)
+      if (state.perspectiveUserId) {
+        const charactersStore = useCharactersStore()
+        // Получаем ID персонажей этого игрока
+        const playerCharacterIds = charactersStore.characters
+          .filter(c => c.ownerId === state.perspectiveUserId && !c.isNpc)
+          .map(c => c.id)
+        
+        events = events.filter(e => {
+          // Публичные события (без targetCharacterIds и targetUserIds) - показываем всем
+          const isPublic = (!e.targetCharacterIds || e.targetCharacterIds.length === 0) &&
+                          (!e.targetUserIds || e.targetUserIds.length === 0)
+          if (isPublic) {
+            return !e.isSecret
+          }
+          
+          // Проверяем targetCharacterIds (новый формат)
+          if (e.targetCharacterIds && Array.isArray(e.targetCharacterIds)) {
+            const hasPlayerCharacter = e.targetCharacterIds.some(charId => 
+              playerCharacterIds.includes(charId)
+            )
+            if (hasPlayerCharacter) return true
+          }
+          
+          // Проверяем targetUserIds (старый формат)
+          if (e.targetUserIds && Array.isArray(e.targetUserIds)) {
+            return e.targetUserIds.includes(state.perspectiveUserId)
+          }
+          
+          return false
+        })
+      }
+      
+      // Фильтр по типу события
       if (state.activeFilter === SceneFilters.ALL) {
-        return state.events
+        return events
       }
       
       const filterMap = {
@@ -140,6 +238,50 @@ export const useSceneLogStore = defineStore('sceneLog', {
         e.type === SceneEventType.QUEST
       )
     },
+    
+    /**
+     * Общее количество отфильтрованных событий
+     */
+    totalFilteredCount() {
+      return this.filteredEvents.length
+    },
+    
+    /**
+     * Пагинированные события для отображения в DOM
+     * Возвращает последние N событий, где N = PAGE_SIZE * loadedPages
+     */
+    paginatedEvents(state) {
+      const filtered = this.filteredEvents
+      const limit = PAGE_SIZE * state.loadedPages
+      // Берём последние события (самые новые в конце)
+      if (filtered.length <= limit) {
+        return filtered
+      }
+      return filtered.slice(-limit)
+    },
+    
+    /**
+     * Есть ли ещё события для загрузки
+     */
+    hasMoreEvents(state) {
+      const filtered = this.filteredEvents
+      const limit = PAGE_SIZE * state.loadedPages
+      return filtered.length > limit
+    },
+    
+    /**
+     * Сколько ещё событий можно загрузить
+     */
+    remainingEventsCount(state) {
+      const filtered = this.filteredEvents
+      const limit = PAGE_SIZE * state.loadedPages
+      return Math.max(0, filtered.length - limit)
+    },
+    
+    /**
+     * Общее количество событий в логе
+     */
+    totalEventsCount: (state) => state.events.length,
   },
   
   actions: {
@@ -174,6 +316,36 @@ export const useSceneLogStore = defineStore('sceneLog', {
           i === idx ? { ...e, ...updates } : e
         )
       }
+    },
+    
+    /**
+     * Отметить приглашение на создание персонажа как использованное
+     * @param {string} inviteId - ID события приглашения
+     * @param {object} usage - информация об использовании { userId, characterId, characterName, characterPortrait }
+     */
+    markInviteUsed(inviteId, usage) {
+      const idx = this.events.findIndex(e => e.id === inviteId && e.type === SceneEventType.CHARACTER_INVITE)
+      if (idx === -1) {
+        console.warn('[SceneLog] markInviteUsed: event not found:', inviteId)
+        return
+      }
+      
+      const event = this.events[idx]
+      
+      // Проверяем, не использовал ли уже этот пользователь
+      if (event.usedBy?.some(u => u.userId === usage.userId)) {
+        console.warn('[SceneLog] markInviteUsed: already used by this user:', usage.userId)
+        return
+      }
+      
+      // Добавляем usage в массив usedBy
+      const usedBy = [...(event.usedBy || []), usage]
+      
+      this.events = this.events.map((e, i) => 
+        i === idx ? { ...e, usedBy } : e
+      )
+      
+      console.log('[SceneLog] markInviteUsed:', inviteId, usage.characterName)
     },
     
     /**
@@ -247,6 +419,158 @@ export const useSceneLogStore = defineStore('sceneLog', {
      */
     setFilter(filter) {
       this.activeFilter = filter
+      // Сбрасываем пагинацию при смене фильтра
+      this.loadedPages = 1
+    },
+    
+    // === Пагинация ===
+    
+    /**
+     * Загрузить ещё одну страницу событий
+     */
+    loadMoreEvents() {
+      this.loadedPages++
+    },
+    
+    /**
+     * Сбросить пагинацию (показать только последние события)
+     */
+    resetPagination() {
+      this.loadedPages = 1
+    },
+    
+    /**
+     * Загрузить все события (осторожно с производительностью!)
+     */
+    loadAllEvents() {
+      const totalPages = Math.ceil(this.filteredEvents.length / PAGE_SIZE)
+      this.loadedPages = Math.max(1, totalPages)
+    },
+    
+    // === Управление логом (для мастера) ===
+    
+    /**
+     * Удалить несколько событий по ID
+     * @param {boolean} broadcast - отправить игрокам (для мастера)
+     */
+    removeEvents(eventIds, broadcast = true) {
+      if (!Array.isArray(eventIds) || eventIds.length === 0) return
+      const idsSet = new Set(eventIds)
+      this.events = this.events.filter(e => !idsSet.has(e.id))
+      console.log('[SceneLog] removeEvents:', eventIds.length, 'events removed')
+      
+      // Отправляем игрокам если мастер
+      if (broadcast) {
+        const sessionStore = useSessionStore()
+        if (sessionStore.role === 'master') {
+          sessionStore.broadcastPayload({
+            type: 'scene-remove-events',
+            eventIds
+          })
+        }
+      }
+    },
+    
+    /**
+     * Очистить лог полностью
+     * @param {boolean} broadcast - отправить игрокам (для мастера)
+     */
+    clearAllEvents(broadcast = true) {
+      const count = this.events.length
+      this.events = []
+      this.currentImage = null
+      this.loadedPages = 1
+      console.log('[SceneLog] clearAllEvents:', count, 'events cleared')
+      
+      // Отправляем игрокам если мастер
+      if (broadcast) {
+        const sessionStore = useSessionStore()
+        if (sessionStore.role === 'master') {
+          sessionStore.broadcastPayload({
+            type: 'scene-clear'
+          })
+        }
+      }
+    },
+    
+    /**
+     * Очистить события старше указанного времени
+     * @param {number} olderThanMs - временная метка (Date.now() - X)
+     */
+    clearEventsOlderThan(olderThanMs) {
+      const before = this.events.length
+      this.events = this.events.filter(e => e.time >= olderThanMs)
+      console.log('[SceneLog] clearEventsOlderThan:', before - this.events.length, 'events cleared')
+    },
+    
+    /**
+     * Экспортировать лог в JSON (для сохранения перед очисткой)
+     * @returns {object} Объект с событиями и метаданными
+     */
+    exportLog() {
+      return {
+        version: 1,
+        exportedAt: Date.now(),
+        exportedAtISO: new Date().toISOString(),
+        totalEvents: this.events.length,
+        events: [...this.events],
+        currentImage: this.currentImage ? { ...this.currentImage } : null
+      }
+    },
+    
+    /**
+     * Экспортировать лог и скачать как файл
+     * @param {string} filename - имя файла (без расширения)
+     */
+    downloadLog(filename = 'trip-scene-log') {
+      const data = this.exportLog()
+      const json = JSON.stringify(data, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${filename}-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      console.log('[SceneLog] downloadLog:', data.totalEvents, 'events exported')
+    },
+    
+    /**
+     * Импортировать лог из JSON (добавляет к существующим)
+     * @param {object} data - объект экспорта
+     * @param {boolean} replace - заменить существующие события
+     */
+    importLog(data, replace = false) {
+      if (!data || !Array.isArray(data.events)) {
+        console.error('[SceneLog] importLog: invalid data')
+        return false
+      }
+      
+      if (replace) {
+        this.events = data.events
+      } else {
+        // Мерджим с существующими
+        this.syncEvents(data.events)
+      }
+      
+      if (data.currentImage) {
+        this.currentImage = data.currentImage
+      }
+      
+      console.log('[SceneLog] importLog:', data.events.length, 'events imported')
+      return true
+    },
+    
+    /**
+     * Установить перспективу мастера (от имени кого смотреть)
+     * @param {string|null} userId - ID пользователя или null для просмотра всего
+     */
+    setPerspective(userId) {
+      this.perspectiveUserId = userId
     },
     
     /**
@@ -460,15 +784,27 @@ export const useSceneLogStore = defineStore('sceneLog', {
       }
       
       // Добавляем в лог (сохраняем оригинальный id и time)
-      const existing = this.events.find(e => e.id === event.id)
-      if (existing) {
-        // Обновляем существующее
+      const existingIdx = this.events.findIndex(e => e.id === event.id)
+      if (existingIdx !== -1) {
+        // Обновляем существующее на месте
         console.log('[SceneLog] Updating existing event')
-        Object.assign(existing, event)
+        this.events[existingIdx] = { ...this.events[existingIdx], ...event }
       } else {
-        // Добавляем новое
+        // Добавляем новое, вставляя по времени
         console.log('[SceneLog] Adding new event, total:', this.events.length + 1)
-        this.events.push(event)
+        const eventTime = event.time || Date.now()
+        // Находим позицию для вставки (по времени)
+        let insertIdx = this.events.length
+        for (let i = this.events.length - 1; i >= 0; i--) {
+          if (this.events[i].time <= eventTime) {
+            insertIdx = i + 1
+            break
+          }
+          if (i === 0) {
+            insertIdx = 0
+          }
+        }
+        this.events.splice(insertIdx, 0, event)
         
         // Ограничиваем размер
         if (this.events.length > MAX_EVENTS) {

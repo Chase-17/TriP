@@ -9,9 +9,12 @@ import { storeToRefs } from 'pinia'
 import { useCharactersStore } from '@/stores/characters'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
+import { useBattleMapStore } from '@/stores/battleMap'
 import aspectsData from '@/data/aspects.json'
+import classesData from '@/data/classes.json'
 import diffsData from '@/data/diffs.json'
 import itemsData from '@/data/items.json'
+import skillsData from '@/data/skills.json'
 import EquipmentManager from './EquipmentManager.vue'
 import InventoryPanel from './InventoryPanel.vue'
 import { getCheckBonus as getCheckBonusFromUtil } from '@/utils/checks'
@@ -35,15 +38,41 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'switch-tab', 'update:activeTab', 'create-character'])
+const emit = defineEmits(['close', 'switch-tab', 'update:activeTab', 'create-character', 'go-to-characters'])
 
 const charactersStore = useCharactersStore()
 const sessionStore = useSessionStore()
 const userStore = useUserStore()
+const battleMapStore = useBattleMapStore()
 const { myCharacters, activeCharacter, activeCharacterId } = storeToRefs(charactersStore)
+const { isMaster } = storeToRefs(sessionStore)
+const { userId } = storeToRefs(userStore)
 
-// Текущий персонаж (из пропса или из стора)
-const currentCharacter = computed(() => props.character || activeCharacter.value)
+// Текущий персонаж:
+// - Для мастера: из пропса или activeCharacter (любой)
+// - Для игрока: только из своих персонажей (myCharacters)
+const currentCharacter = computed(() => {
+  if (props.character) return props.character
+  
+  // Мастер может смотреть любого персонажа
+  if (isMaster.value) return activeCharacter.value
+  
+  // Игрок видит только своих персонажей
+  const myChars = myCharacters.value
+  if (!myChars.length) return null
+  
+  // Если activeCharacter принадлежит игроку - показываем его
+  if (activeCharacter.value && activeCharacter.value.ownerId === userId.value) {
+    return activeCharacter.value
+  }
+  
+  // Иначе - первого из своих
+  return myChars[0]
+})
+
+// Проверка владельца и права на удаление
+const isOwner = computed(() => currentCharacter.value?.ownerId === userId.value)
+const canDelete = computed(() => isOwner.value || isMaster.value)
 
 // Вкладки внутри листа персонажа
 const sheetTabs = [
@@ -335,6 +364,335 @@ const updateCharacter = (updatedChar) => {
   charactersStore.updateCharacter(updatedChar.id, updatedChar)
 }
 
+// ============ Редактирование характеристик (мастер) ============
+const showStatsEditor = ref(false)
+const editingStats = ref({})
+
+// 6 основных аспектов для характеристик
+const statAspects = computed(() => {
+  return aspectsData.aspects.filter(a => 
+    ['war', 'knowledge', 'community', 'shadow', 'mysticism', 'nature'].includes(a.id)
+  )
+})
+
+const openStatsEditor = () => {
+  if (!currentCharacter.value) return
+  editingStats.value = { ...(currentCharacter.value.stats || {
+    war: 0, knowledge: 0, community: 0, shadow: 0, mysticism: 0, nature: 0
+  })}
+  showStatsEditor.value = true
+}
+
+const saveStats = () => {
+  if (!currentCharacter.value) return
+  charactersStore.updateCharacter(currentCharacter.value.id, { 
+    stats: { ...editingStats.value } 
+  })
+  // Синхронизируем с игроками (если мастер)
+  if (isMaster.value) {
+    sessionStore.broadcastAllCharacters()
+  }
+  showStatsEditor.value = false
+}
+
+// ============ Редактирование навыков (мастер) ============
+const showMasterSkillsEditor = ref(false)
+const editingMasterSkills = ref([])
+const newSkillId = ref('')
+const newSkillLevel = ref(1)
+const customSkillName = ref('')
+const customSkillDescription = ref('')
+const showCustomSkillForm = ref(false)
+
+// Все доступные навыки из классов и аспектов (traits)
+const allAvailableSkills = computed(() => {
+  const skills = []
+  
+  // Навыки из классов
+  classesData.classes.forEach(cls => {
+    if (cls.traits) {
+      cls.traits.forEach(trait => {
+        skills.push({
+          id: `class_${cls.id}_${trait.id}`,
+          name: trait.name,
+          sourceType: 'class',
+          sourceId: cls.id,
+          sourceName: typeof cls.name === 'object' ? cls.name.m : cls.name,
+          maxLevel: trait.levels?.length || 1,
+          levels: trait.levels || []
+        })
+      })
+    }
+  })
+  
+  // Навыки из аспектов
+  aspectsData.aspects.forEach(aspect => {
+    if (aspect.traits) {
+      aspect.traits.forEach(trait => {
+        // Пропускаем временные навыки
+        if (trait.id?.toLowerCase().includes('temp')) return
+        
+        skills.push({
+          id: `aspect_${aspect.id}_${trait.id}`,
+          name: trait.name,
+          sourceType: 'aspect',
+          sourceId: aspect.id,
+          sourceName: aspect.name,
+          aspectColor: aspect.color,
+          maxLevel: trait.levels?.length || 1,
+          levels: trait.levels || []
+        })
+      })
+    }
+  })
+  
+  return skills
+})
+
+const openMasterSkillsEditor = () => {
+  if (!currentCharacter.value) return
+  editingMasterSkills.value = [...(currentCharacter.value.skills || [])]
+  showMasterSkillsEditor.value = true
+}
+
+const addMasterSkill = () => {
+  if (!newSkillId.value) return
+  if (editingMasterSkills.value.some(s => s.id === newSkillId.value)) {
+    alert('Этот навык уже добавлен')
+    return
+  }
+  editingMasterSkills.value.push({
+    id: newSkillId.value,
+    level: newSkillLevel.value
+  })
+  newSkillId.value = ''
+  newSkillLevel.value = 1
+}
+
+const removeMasterSkill = (skillId) => {
+  editingMasterSkills.value = editingMasterSkills.value.filter(s => s.id !== skillId)
+}
+
+const updateMasterSkillLevel = (skillId, level) => {
+  const skill = editingMasterSkills.value.find(s => s.id === skillId)
+  if (skill) {
+    skill.level = parseInt(level) || 1
+  }
+}
+
+const getMasterSkillData = (skillId) => {
+  // Сначала ищем в стандартных навыках
+  const standardSkill = allAvailableSkills.value.find(s => s.id === skillId)
+  if (standardSkill) return standardSkill
+  
+  // Если это кастомный навык (начинается с custom_)
+  if (skillId.startsWith('custom_')) {
+    const charSkill = editingMasterSkills.value.find(s => s.id === skillId)
+    if (charSkill) {
+      return {
+        id: skillId,
+        name: charSkill.customName || 'Кастомный навык',
+        sourceType: 'custom',
+        sourceName: 'Особый',
+        maxLevel: 3,
+        levels: [],
+        description: charSkill.customDescription || ''
+      }
+    }
+  }
+  
+  return null
+}
+
+// Добавление кастомного навыка
+const addCustomSkill = () => {
+  if (!customSkillName.value.trim()) {
+    alert('Введите название навыка')
+    return
+  }
+  
+  const customId = `custom_${Date.now()}`
+  editingMasterSkills.value.push({
+    id: customId,
+    level: 1,
+    customName: customSkillName.value.trim(),
+    customDescription: customSkillDescription.value.trim()
+  })
+  
+  customSkillName.value = ''
+  customSkillDescription.value = ''
+  showCustomSkillForm.value = false
+}
+
+const saveMasterSkills = () => {
+  if (!currentCharacter.value) return
+  charactersStore.updateCharacter(currentCharacter.value.id, { 
+    skills: [...editingMasterSkills.value] 
+  })
+  // Синхронизируем с игроками
+  if (isMaster.value) {
+    sessionStore.broadcastAllCharacters()
+  }
+  showMasterSkillsEditor.value = false
+}
+
+// ============ Редактирование основных данных (мастер) ============
+const showBasicEditor = ref(false)
+const editingBasicData = ref({
+  name: '',
+  portrait: '',
+  npcType: 'neutral',
+  factions: [],
+  visibleToPlayers: true
+})
+
+const npcTypes = [
+  { id: 'ally', label: 'Союзник', color: '#22c55e' },
+  { id: 'neutral', label: 'Нейтрал', color: '#94a3b8' },
+  { id: 'enemy', label: 'Враг', color: '#ef4444' }
+]
+
+const openBasicEditor = () => {
+  if (!currentCharacter.value) return
+  editingBasicData.value = {
+    name: currentCharacter.value.name || '',
+    portrait: currentCharacter.value.portrait || '',
+    npcType: currentCharacter.value.npcType || 'neutral',
+    factions: currentCharacter.value.factions || [],
+    visibleToPlayers: currentCharacter.value.visibleToPlayers !== false
+  }
+  showBasicEditor.value = true
+}
+
+const saveBasicData = () => {
+  if (!currentCharacter.value) return
+  charactersStore.updateCharacter(currentCharacter.value.id, {
+    name: editingBasicData.value.name,
+    portrait: editingBasicData.value.portrait,
+    npcType: editingBasicData.value.npcType,
+    factions: editingBasicData.value.factions,
+    visibleToPlayers: editingBasicData.value.visibleToPlayers
+  })
+  // Синхронизируем с игроками
+  if (isMaster.value) {
+    sessionStore.broadcastAllCharacters()
+  }
+  showBasicEditor.value = false
+}
+
+// Управление фракциями
+const newFaction = ref('')
+const addFaction = () => {
+  if (!newFaction.value.trim()) return
+  if (!editingBasicData.value.factions.includes(newFaction.value.trim())) {
+    editingBasicData.value.factions.push(newFaction.value.trim())
+  }
+  newFaction.value = ''
+}
+const removeFaction = (faction) => {
+  editingBasicData.value.factions = editingBasicData.value.factions.filter(f => f !== faction)
+}
+
+// ============ Редактирование здоровья (мастер) ============
+const showHealthEditor = ref(false)
+const editingHealthData = ref({
+  healthType: 'simple',
+  maxHp: 8,
+  // Для системы ранений (wounds)
+  maxScratch: 3,
+  maxLight: 2,
+  maxHeavy: 1,
+  maxDeadly: 1,
+  bonusDeadlySlots: 0
+})
+
+const openHealthEditor = () => {
+  if (!currentCharacter.value) return
+  const combat = currentCharacter.value.combat || {}
+  const wounds = combat.wounds || {}
+  editingHealthData.value = {
+    healthType: combat.healthType || 'simple',
+    maxHp: combat.maxHp || 8,
+    // Для системы ранений - читаем текущие максимумы или дефолты
+    maxScratch: wounds.maxScratch ?? 3,
+    maxLight: wounds.maxLight ?? 2,
+    maxHeavy: wounds.maxHeavy ?? 1,
+    maxDeadly: wounds.maxDeadly ?? 1,
+    bonusDeadlySlots: combat.bonusDeadlySlots || 0
+  }
+  showHealthEditor.value = true
+}
+
+const saveHealthData = () => {
+  if (!currentCharacter.value) return
+  const currentCombat = currentCharacter.value.combat || {}
+  const currentWounds = currentCombat.wounds || {}
+  
+  const updates = {
+    combat: {
+      ...currentCombat,
+      healthType: editingHealthData.value.healthType,
+      maxHp: editingHealthData.value.maxHp,
+      bonusDeadlySlots: editingHealthData.value.bonusDeadlySlots
+    }
+  }
+  
+  // Если используется система ранений - сохраняем максимумы
+  if (editingHealthData.value.healthType === 'wounds') {
+    updates.combat.wounds = {
+      ...currentWounds,
+      maxScratch: editingHealthData.value.maxScratch,
+      maxLight: editingHealthData.value.maxLight,
+      maxHeavy: editingHealthData.value.maxHeavy,
+      maxDeadly: editingHealthData.value.maxDeadly
+    }
+  }
+  
+  charactersStore.updateCharacter(currentCharacter.value.id, updates)
+  // Синхронизируем с игроками
+  if (isMaster.value) {
+    sessionStore.broadcastAllCharacters()
+  }
+  showHealthEditor.value = false
+}
+
+// Удаление персонажа (перенесено из отдельной кнопки)
+const confirmDeleteCharacter = () => {
+  if (!currentCharacter.value) return
+  
+  const isNpc = currentCharacter.value.isNpc
+  const confirmText = isNpc
+    ? `Удалить NPC "${currentCharacter.value.name}"?`
+    : isOwner.value
+      ? `Удалить персонажа "${currentCharacter.value.name}"?`
+      : `Удалить персонажа "${currentCharacter.value.name}" игрока ${currentCharacter.value.ownerNickname}?`
+    
+  if (confirm(confirmText)) {
+    const charId = currentCharacter.value.id
+    
+    // Удаляем токен персонажа со всех карт
+    const activeMap = battleMapStore.activeMap
+    if (activeMap) {
+      battleMapStore.removeTokenByCharacterId(activeMap.id, charId)
+    }
+    
+    if (isNpc) {
+      charactersStore.deleteNpc(charId)
+      // Синхронизируем удаление NPC с игроками
+      sessionStore.sendCharacterDelete(charId)
+    } else {
+      charactersStore.deleteCharacter(charId)
+      sessionStore.sendCharacterDelete(charId)
+    }
+    
+    if (isMaster.value) {
+      emit('go-to-characters')
+    } else {
+      emit('close')
+    }
+  }
+}
+
 // Экипировка предмета из инвентаря
 const handleEquipItem = (item) => {
   if (!currentCharacter.value) return
@@ -373,17 +731,6 @@ const handleEquipItem = (item) => {
       }
       updateCharacter(updatedCharacter)
     }
-  }
-}
-
-// Удаление персонажа
-const deleteCharacter = () => {
-  if (!currentCharacter.value) return
-  if (confirm(`Удалить персонажа "${currentCharacter.value.name}"?`)) {
-    const charId = currentCharacter.value.id
-    charactersStore.deleteCharacter(charId)
-    sessionStore.sendCharacterDelete(charId)
-    emit('close')
   }
 }
 </script>
@@ -431,6 +778,108 @@ const deleteCharacter = () => {
       v-if="currentCharacter"
       class="sheet-content"
     >
+      <!-- ===== Мастерские инструменты (ВВЕРХУ) ===== -->
+      <div v-if="isMaster" class="master-edit-section">
+        <div class="master-section-title">⚙️ Мастерские инструменты</div>
+        
+        <!-- Основные данные: имя, портрет, тип NPC -->
+        <div class="master-basic-section">
+          <div class="master-section-header">
+            <span>Основные данные</span>
+            <button class="master-edit-btn" @click="openBasicEditor">
+              <Icon icon="mdi:pencil" />
+              Редактировать
+            </button>
+          </div>
+          <div class="master-basic-info">
+            <div class="basic-info-row">
+              <span class="info-label">Имя:</span>
+              <span class="info-value">{{ currentCharacter.name }}</span>
+            </div>
+            <div v-if="currentCharacter.isNpc" class="basic-info-row">
+              <span class="info-label">Тип:</span>
+              <span 
+                class="info-value npc-type-badge"
+                :style="{ color: npcTypes.find(t => t.id === currentCharacter.npcType)?.color || '#94a3b8' }"
+              >
+                {{ npcTypes.find(t => t.id === currentCharacter.npcType)?.label || 'Нейтрал' }}
+              </span>
+            </div>
+            <div v-if="currentCharacter.isNpc && currentCharacter.factions?.length" class="basic-info-row">
+              <span class="info-label">Фракции:</span>
+              <span class="info-value">{{ currentCharacter.factions.join(', ') }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Здоровье -->
+        <div class="master-health-section">
+          <div class="master-section-header">
+            <span>Здоровье</span>
+            <button class="master-edit-btn" @click="openHealthEditor">
+              <Icon icon="mdi:pencil" />
+              Редактировать
+            </button>
+          </div>
+          <div class="master-health-info">
+            <span class="health-type-badge" :class="currentCharacter.combat?.healthType || 'simple'">
+              {{ currentCharacter.combat?.healthType === 'wounds' ? 'Ранения' : 'Простое HP' }}
+            </span>
+            <span v-if="currentCharacter.combat?.healthType !== 'wounds'" class="health-max">
+              Макс: {{ currentCharacter.combat?.maxHp || 8 }}
+            </span>
+            <span v-else class="health-max">
+              Смерт. слоты: {{ 1 + (currentCharacter.combat?.bonusDeadlySlots || 0) }}
+            </span>
+          </div>
+        </div>
+        
+        <!-- Характеристики -->
+        <div class="master-stats-section">
+          <div class="master-section-header">
+            <span>Характеристики</span>
+            <button class="master-edit-btn" @click="openStatsEditor">
+              <Icon icon="mdi:pencil" />
+              Редактировать
+            </button>
+          </div>
+          <div class="master-stats-grid">
+            <div 
+              v-for="aspect in statAspects" 
+              :key="aspect.id"
+              class="master-stat-item"
+              :style="{ '--stat-color': aspect.color }"
+            >
+              <Icon :icon="aspect.characteristicIcon || aspect.icon" class="stat-icon" />
+              <span class="stat-name">{{ aspect.characteristic?.name || aspect.name }}</span>
+              <span class="stat-value">{{ currentCharacter?.stats?.[aspect.id] || 0 }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Навыки -->
+        <div class="master-skills-section">
+          <div class="master-section-header">
+            <span>Управление навыками</span>
+            <button class="master-edit-btn" @click="openMasterSkillsEditor">
+              <Icon icon="mdi:pencil" />
+              Редактировать
+            </button>
+          </div>
+          <div class="master-skills-info">
+            {{ currentCharacter?.skills?.length || 0 }} навыков назначено
+          </div>
+        </div>
+        
+        <!-- Удаление персонажа -->
+        <div class="master-danger-section">
+          <button class="master-delete-btn" @click="confirmDeleteCharacter">
+            <Icon icon="mdi:delete" />
+            {{ currentCharacter.isNpc ? 'Удалить NPC' : 'Удалить персонажа' }}
+          </button>
+        </div>
+      </div>
+      
       <!-- Вкладка "Основное" -->
       <div v-show="activeSheetTab === 'main'" class="tab-content tab-content-bottom">
         <!-- Блок навыков и особенностей -->
@@ -782,12 +1231,380 @@ const deleteCharacter = () => {
     <!-- Пустое состояние -->
     <div v-else class="empty-state">
       <Icon icon="mdi:account-off" class="empty-icon" />
-      <p>Персонаж не выбран</p>
-      <button class="create-character-btn" @click="emit('create-character')">
-        <Icon icon="mdi:plus" />
-        <span>Создать персонажа</span>
-      </button>
+      <p class="empty-title">У вас пока нет персонажей</p>
+      <p class="empty-hint">
+        Чтобы создать нового персонажа, вам нужно получить приглашение от мастера. 
+        Оно отобразится на вкладке «Сцена».
+      </p>
     </div>
+    
+    <!-- ===== Модальное окно редактирования основных данных ===== -->
+    <Teleport to="body">
+      <div v-if="showBasicEditor" class="master-modal-overlay" @click="showBasicEditor = false">
+        <div class="master-modal master-modal-wide" @click.stop>
+          <div class="master-modal-header">
+            <h3>Основные данные</h3>
+            <button class="modal-close-btn" @click="showBasicEditor = false">
+              <Icon icon="mdi:close" />
+            </button>
+          </div>
+          
+          <div class="master-modal-body">
+            <!-- Имя -->
+            <div class="form-group">
+              <label>Имя персонажа</label>
+              <input 
+                type="text" 
+                v-model="editingBasicData.name"
+                class="form-input"
+                placeholder="Введите имя..."
+              />
+            </div>
+            
+            <!-- Портрет -->
+            <div class="form-group">
+              <label>URL портрета</label>
+              <input 
+                type="text" 
+                v-model="editingBasicData.portrait"
+                class="form-input"
+                placeholder="https://..."
+              />
+              <div v-if="editingBasicData.portrait" class="portrait-preview">
+                <img :src="editingBasicData.portrait" alt="Превью" />
+              </div>
+            </div>
+            
+            <!-- Только для NPC -->
+            <template v-if="currentCharacter?.isNpc">
+              <!-- Тип NPC -->
+              <div class="form-group">
+                <label>Тип NPC</label>
+                <div class="npc-type-selector">
+                  <button 
+                    v-for="type in npcTypes"
+                    :key="type.id"
+                    class="npc-type-btn"
+                    :class="{ active: editingBasicData.npcType === type.id }"
+                    :style="{ '--type-color': type.color }"
+                    @click="editingBasicData.npcType = type.id"
+                  >
+                    {{ type.label }}
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Видимость для игроков -->
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    v-model="editingBasicData.visibleToPlayers"
+                  />
+                  <span>Видим игрокам на карте</span>
+                </label>
+              </div>
+              
+              <!-- Фракции -->
+              <div class="form-group">
+                <label>Фракции</label>
+                <div class="factions-list">
+                  <span 
+                    v-for="faction in editingBasicData.factions" 
+                    :key="faction"
+                    class="faction-tag"
+                  >
+                    {{ faction }}
+                    <button class="faction-remove" @click="removeFaction(faction)">×</button>
+                  </span>
+                </div>
+                <div class="faction-add">
+                  <input 
+                    type="text" 
+                    v-model="newFaction"
+                    class="form-input"
+                    placeholder="Новая фракция..."
+                    @keyup.enter="addFaction"
+                  />
+                  <button class="add-faction-btn" @click="addFaction">
+                    <Icon icon="mdi:plus" />
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+          
+          <div class="master-modal-footer">
+            <button class="modal-btn cancel" @click="showBasicEditor = false">Отмена</button>
+            <button class="modal-btn save" @click="saveBasicData">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+    
+    <!-- ===== Модальное окно редактирования здоровья ===== -->
+    <Teleport to="body">
+      <div v-if="showHealthEditor" class="master-modal-overlay" @click="showHealthEditor = false">
+        <div class="master-modal" @click.stop>
+          <div class="master-modal-header">
+            <h3>Настройки здоровья</h3>
+            <button class="modal-close-btn" @click="showHealthEditor = false">
+              <Icon icon="mdi:close" />
+            </button>
+          </div>
+          
+          <div class="master-modal-body">
+            <!-- Тип системы здоровья -->
+            <div class="form-group">
+              <label>Система здоровья</label>
+              <div class="health-type-selector">
+                <button 
+                  class="health-type-btn"
+                  :class="{ active: editingHealthData.healthType === 'simple' }"
+                  @click="editingHealthData.healthType = 'simple'"
+                >
+                  <Icon icon="mdi:heart" />
+                  <span>Простое HP</span>
+                </button>
+                <button 
+                  class="health-type-btn"
+                  :class="{ active: editingHealthData.healthType === 'wounds' }"
+                  @click="editingHealthData.healthType = 'wounds'"
+                >
+                  <Icon icon="mdi:bandage" />
+                  <span>Ранения</span>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Для простого HP -->
+            <div v-if="editingHealthData.healthType === 'simple'" class="form-group">
+              <label>Максимальное HP</label>
+              <input 
+                type="number" 
+                v-model.number="editingHealthData.maxHp"
+                class="form-input"
+                min="1"
+                max="100"
+              />
+            </div>
+            
+            <!-- Для ранений -->
+            <template v-if="editingHealthData.healthType === 'wounds'">
+              <div class="wounds-grid">
+                <div class="form-group">
+                  <label>Царапины (макс.)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="editingHealthData.maxScratch"
+                    class="form-input"
+                    min="0"
+                    max="10"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Лёгкие (макс.)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="editingHealthData.maxLight"
+                    class="form-input"
+                    min="0"
+                    max="10"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Тяжёлые (макс.)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="editingHealthData.maxHeavy"
+                    class="form-input"
+                    min="0"
+                    max="10"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Смертельные (макс.)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="editingHealthData.maxDeadly"
+                    class="form-input"
+                    min="1"
+                    max="10"
+                  />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Бонусные смертельные слоты</label>
+                <input 
+                  type="number" 
+                  v-model.number="editingHealthData.bonusDeadlySlots"
+                  class="form-input"
+                  min="0"
+                  max="5"
+                />
+                <p class="form-hint">Добавляются к максимуму смертельных</p>
+              </div>
+            </template>
+          </div>
+          
+          <div class="master-modal-footer">
+            <button class="modal-btn cancel" @click="showHealthEditor = false">Отмена</button>
+            <button class="modal-btn save" @click="saveHealthData">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+    
+    <!-- ===== Модальное окно редактирования характеристик ===== -->
+    <Teleport to="body">
+      <div v-if="showStatsEditor" class="master-modal-overlay" @click="showStatsEditor = false">
+        <div class="master-modal" @click.stop>
+          <div class="master-modal-header">
+            <h3>Редактирование характеристик</h3>
+            <button class="modal-close-btn" @click="showStatsEditor = false">
+              <Icon icon="mdi:close" />
+            </button>
+          </div>
+          
+          <div class="master-modal-body">
+            <div class="stats-editor-grid">
+              <div 
+                v-for="aspect in statAspects" 
+                :key="aspect.id"
+                class="stat-editor-item"
+                :style="{ '--stat-color': aspect.color }"
+              >
+                <div class="stat-editor-label">
+                  <Icon :icon="aspect.characteristicIcon || aspect.icon" />
+                  <span>{{ aspect.characteristic?.name || aspect.name }}</span>
+                </div>
+                <input 
+                  type="number" 
+                  v-model.number="editingStats[aspect.id]"
+                  class="stat-editor-input"
+                  min="-5"
+                  max="10"
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div class="master-modal-footer">
+            <button class="modal-btn cancel" @click="showStatsEditor = false">Отмена</button>
+            <button class="modal-btn save" @click="saveStats">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+    
+    <!-- ===== Модальное окно редактирования навыков ===== -->
+    <Teleport to="body">
+      <div v-if="showMasterSkillsEditor" class="master-modal-overlay" @click="showMasterSkillsEditor = false">
+        <div class="master-modal master-modal-wide" @click.stop>
+          <div class="master-modal-header">
+            <h3>Редактирование навыков</h3>
+            <button class="modal-close-btn" @click="showMasterSkillsEditor = false">
+              <Icon icon="mdi:close" />
+            </button>
+          </div>
+          
+          <div class="master-modal-body">
+            <!-- Добавление нового навыка из классов/аспектов -->
+            <div class="skill-add-row">
+              <select v-model="newSkillId" class="skill-select">
+                <option value="">Выберите навык...</option>
+                <option 
+                  v-for="skill in allAvailableSkills" 
+                  :key="skill.id" 
+                  :value="skill.id"
+                  :disabled="editingMasterSkills.some(s => s.id === skill.id)"
+                >
+                  [{{ skill.sourceType === 'class' ? 'Класс' : 'Аспект' }}] {{ skill.name }} ({{ skill.sourceName }})
+                </option>
+              </select>
+              <select v-model.number="newSkillLevel" class="level-select">
+                <option :value="1">Ур. 1</option>
+                <option :value="2">Ур. 2</option>
+                <option :value="3">Ур. 3</option>
+              </select>
+              <button class="add-skill-btn" @click="addMasterSkill" :disabled="!newSkillId">
+                <Icon icon="mdi:plus" />
+              </button>
+            </div>
+            
+            <!-- Добавление кастомного навыка -->
+            <div class="custom-skill-section">
+              <button 
+                v-if="!showCustomSkillForm" 
+                class="add-custom-skill-btn"
+                @click="showCustomSkillForm = true"
+              >
+                <Icon icon="mdi:plus-circle-outline" /> Добавить особый навык
+              </button>
+              <div v-else class="custom-skill-form">
+                <input 
+                  v-model="customSkillName" 
+                  placeholder="Название навыка"
+                  class="custom-skill-input"
+                />
+                <textarea 
+                  v-model="customSkillDescription" 
+                  placeholder="Описание (опционально)"
+                  class="custom-skill-textarea"
+                  rows="2"
+                />
+                <div class="custom-skill-actions">
+                  <button class="modal-btn cancel" @click="showCustomSkillForm = false">Отмена</button>
+                  <button class="modal-btn save" @click="addCustomSkill">Добавить</button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Список текущих навыков -->
+            <div v-if="editingMasterSkills.length" class="skills-editor-list">
+              <div 
+                v-for="skill in editingMasterSkills" 
+                :key="skill.id"
+                class="skill-editor-item"
+                :class="{ 'custom-skill': skill.id.startsWith('custom_') }"
+              >
+                <div class="skill-editor-info">
+                  <span class="skill-editor-name">
+                    {{ skill.customName || getMasterSkillData(skill.id)?.name || skill.id }}
+                  </span>
+                  <span class="skill-editor-source" v-if="getMasterSkillData(skill.id)?.sourceName">
+                    {{ getMasterSkillData(skill.id).sourceName }}
+                  </span>
+                  <span class="skill-editor-source custom" v-else-if="skill.id.startsWith('custom_')">
+                    Особый
+                  </span>
+                </div>
+                <select 
+                  :value="skill.level"
+                  @change="updateMasterSkillLevel(skill.id, $event.target.value)"
+                  class="level-select"
+                >
+                  <option :value="1">Ур. 1</option>
+                  <option :value="2">Ур. 2</option>
+                  <option :value="3">Ур. 3</option>
+                </select>
+                <button class="remove-skill-btn" @click="removeMasterSkill(skill.id)">
+                  <Icon icon="mdi:close" />
+                </button>
+              </div>
+            </div>
+            <div v-else class="skills-editor-empty">
+              Навыки не добавлены
+            </div>
+          </div>
+          
+          <div class="master-modal-footer">
+            <button class="modal-btn cancel" @click="showMasterSkillsEditor = false">Отмена</button>
+            <button class="modal-btn save" @click="saveMasterSkills">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -902,6 +1719,37 @@ const deleteCharacter = () => {
   overflow-y: auto;
   padding: 12px;
   padding-bottom: 12px;
+}
+
+/* Секция удаления персонажа */
+.delete-section {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0;
+  margin-bottom: 8px;
+}
+
+.delete-character-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.delete-character-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.delete-character-btn .delete-icon {
+  font-size: 16px;
 }
 
 .tab-content {
@@ -2050,6 +2898,21 @@ const deleteCharacter = () => {
   opacity: 0.5;
 }
 
+.empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin: 0 0 12px;
+}
+
+.empty-hint {
+  font-size: 14px;
+  color: #64748b;
+  max-width: 320px;
+  line-height: 1.5;
+  margin: 0;
+}
+
 .create-character-btn {
   display: flex;
   align-items: center;
@@ -2086,5 +2949,667 @@ const deleteCharacter = () => {
   padding-top: 210px;
   height: 100%;
   box-sizing: border-box;
+}
+
+/* ===== Мастерские инструменты ===== */
+.master-edit-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+}
+
+.master-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a78bfa;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.master-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.master-section-header span {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+.master-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.master-edit-btn:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+.master-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.master-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.master-stat-item .stat-icon {
+  font-size: 18px;
+  color: var(--stat-color, #94a3b8);
+}
+
+.master-stat-item .stat-name {
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.master-stat-item .stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--stat-color, #f1f5f9);
+}
+
+.master-skills-section {
+  margin-top: 16px;
+}
+
+.master-skills-info {
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* Основные данные */
+.master-basic-section {
+  margin-bottom: 16px;
+}
+
+.master-basic-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.basic-info-row {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.info-label {
+  color: #64748b;
+}
+
+.info-value {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.npc-type-badge {
+  font-weight: 600;
+}
+
+/* Здоровье */
+.master-health-section {
+  margin-bottom: 16px;
+}
+
+.master-health-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.health-type-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.health-type-badge.simple {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.health-type-badge.wounds {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.health-max {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* Кнопка удаления */
+.master-danger-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.master-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #ef4444;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.master-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+/* Формы в модальных окнах */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* Сетка для ранений */
+.wounds-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.wounds-grid .form-group {
+  margin-bottom: 0;
+}
+
+/* Кастомные навыки */
+.custom-skill-section {
+  margin: 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.add-custom-skill-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px dashed rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  color: #a78bfa;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  justify-content: center;
+}
+
+.add-custom-skill-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.custom-skill-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-skill-input {
+  padding: 8px 12px;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.custom-skill-textarea {
+  padding: 8px 12px;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.custom-skill-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.skill-editor-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-editor-source {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.skill-editor-source.custom {
+  color: #a78bfa;
+}
+
+.skill-editor-item.custom-skill {
+  border-left: 2px solid #a78bfa;
+}
+
+.portrait-preview {
+  margin-top: 8px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1e293b;
+}
+
+.portrait-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Селектор типа NPC */
+.npc-type-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.npc-type-btn {
+  flex: 1;
+  padding: 10px;
+  background: rgba(51, 65, 85, 0.4);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.npc-type-btn.active {
+  background: color-mix(in srgb, var(--type-color) 20%, transparent);
+  border-color: var(--type-color);
+  color: var(--type-color);
+}
+
+/* Чекбокс */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #8b5cf6;
+}
+
+.checkbox-label span {
+  color: #e2e8f0;
+}
+
+/* Фракции */
+.factions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.faction-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
+  color: #3b82f6;
+  font-size: 12px;
+}
+
+.faction-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+}
+
+.faction-add {
+  display: flex;
+  gap: 8px;
+}
+
+.add-faction-btn {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  color: #3b82f6;
+  cursor: pointer;
+}
+
+/* Селектор типа здоровья */
+.health-type-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.health-type-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(51, 65, 85, 0.4);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.health-type-btn svg {
+  font-size: 24px;
+}
+
+.health-type-btn.active {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+}
+
+/* ===== Модальные окна мастера ===== */
+.master-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.master-modal {
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.master-modal-wide {
+  max-width: 500px;
+}
+
+.master-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.master-modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.modal-close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(51, 65, 85, 0.5);
+  border: none;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.master-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.master-modal-footer {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn.cancel {
+  background: rgba(51, 65, 85, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.modal-btn.save {
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #22c55e;
+}
+
+.modal-btn.save:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+/* Редактор характеристик */
+.stats-editor-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stat-editor-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 8px;
+}
+
+.stat-editor-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  color: var(--stat-color, #f1f5f9);
+  font-weight: 500;
+}
+
+.stat-editor-label svg {
+  font-size: 20px;
+}
+
+.stat-editor-input {
+  width: 70px;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Редактор навыков */
+.skill-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.skill-select {
+  flex: 1;
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.level-select {
+  width: 80px;
+  padding: 10px 8px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.add-skill-btn {
+  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 8px;
+  color: #22c55e;
+  cursor: pointer;
+}
+
+.add-skill-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skills-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-editor-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(51, 65, 85, 0.3);
+  border-radius: 8px;
+}
+
+.skill-editor-name {
+  flex: 1;
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
+.remove-skill-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  cursor: pointer;
+}
+
+.skills-editor-empty {
+  text-align: center;
+  padding: 24px;
+  color: #64748b;
+  font-size: 14px;
 }
 </style>

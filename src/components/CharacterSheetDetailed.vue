@@ -1,20 +1,27 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Icon } from '@iconify/vue'
 import aspectsData from '@/data/aspects.json'
 import diffsData from '@/data/diffs.json'
 import itemsData from '@/data/items.json'
+import skillsData from '@/data/skills.json'
 import EquipmentManager from './EquipmentManager.vue'
 import InventoryPanel from './InventoryPanel.vue'
 import HealthDisplay from './HealthDisplay.vue'
 import CharacterPortrait from './CharacterPortrait.vue'
 import { useCharactersStore } from '@/stores/characters'
 import { useSessionStore } from '@/stores/session'
+import { useUserStore } from '@/stores/user'
 import { getCheckBonus as getCheckBonusFromUtil } from '@/utils/checks'
 import { getDefenceData, calculateDefence } from '@/utils/defence'
 
 const charactersStore = useCharactersStore()
 const sessionStore = useSessionStore()
+const userStore = useUserStore()
+
+const { isMaster } = storeToRefs(sessionStore)
+const { userId } = storeToRefs(userStore)
 
 const props = defineProps({
   character: {
@@ -25,9 +32,104 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
+// Проверка, является ли текущий пользователь владельцем персонажа
+const isOwner = computed(() => props.character.ownerId === userId.value)
+
+// Показывать кнопку удаления: владельцу всегда, мастеру - если это не его персонаж
+const canDelete = computed(() => isOwner.value || isMaster.value)
+
 // Обновление персонажа
 const updateCharacter = (updatedChar) => {
   charactersStore.updateCharacter(updatedChar.id, updatedChar)
+}
+
+// Обработчик обновления боевых данных (здоровье)
+const handleCombatUpdate = (newCombat) => {
+  const updatedCharacter = {
+    ...props.character,
+    combat: newCombat
+  }
+  updateCharacter(updatedCharacter)
+}
+
+// Редактирование характеристик
+const showStatsEditor = ref(false)
+const editingStats = ref({})
+
+const openStatsEditor = () => {
+  editingStats.value = { ...(props.character.stats || {
+    war: 0, knowledge: 0, community: 0, shadow: 0, mysticism: 0, nature: 0
+  })}
+  showStatsEditor.value = true
+}
+
+const saveStats = () => {
+  const updatedCharacter = {
+    ...props.character,
+    stats: { ...editingStats.value }
+  }
+  updateCharacter(updatedCharacter)
+  showStatsEditor.value = false
+}
+
+// Редактирование навыков
+const showSkillsEditor = ref(false)
+const editingSkills = ref([])
+const newSkillId = ref('')
+const newSkillLevel = ref(1)
+
+// Все доступные навыки
+const allSkills = computed(() => skillsData.skills || [])
+
+// 6 основных аспектов для характеристик
+const statAspects = computed(() => {
+  return aspectsData.aspects.filter(a => 
+    ['war', 'knowledge', 'community', 'shadow', 'mysticism', 'nature'].includes(a.id)
+  )
+})
+
+const openSkillsEditor = () => {
+  editingSkills.value = [...(props.character.skills || [])]
+  showSkillsEditor.value = true
+}
+
+const addSkill = () => {
+  if (!newSkillId.value) return
+  // Проверяем, что навык ещё не добавлен
+  if (editingSkills.value.some(s => s.id === newSkillId.value)) {
+    alert('Этот навык уже добавлен')
+    return
+  }
+  editingSkills.value.push({
+    id: newSkillId.value,
+    level: newSkillLevel.value
+  })
+  newSkillId.value = ''
+  newSkillLevel.value = 1
+}
+
+const removeSkill = (skillId) => {
+  editingSkills.value = editingSkills.value.filter(s => s.id !== skillId)
+}
+
+const updateSkillLevel = (skillId, level) => {
+  const skill = editingSkills.value.find(s => s.id === skillId)
+  if (skill) {
+    skill.level = parseInt(level) || 1
+  }
+}
+
+const getSkillData = (skillId) => {
+  return allSkills.value.find(s => s.id === skillId)
+}
+
+const saveSkills = () => {
+  const updatedCharacter = {
+    ...props.character,
+    skills: [...editingSkills.value]
+  }
+  updateCharacter(updatedCharacter)
+  showSkillsEditor.value = false
 }
 
 // Экипировка предмета из инвентаря
@@ -77,11 +179,16 @@ const handleEquipItem = (item) => {
 
 // Удаление персонажа с подтверждением
 const deleteCharacter = () => {
-  if (confirm(`Вы уверены, что хотите удалить персонажа "${props.character.name}"? Это действие нельзя отменить.`)) {
+  const confirmText = isOwner.value
+    ? `Вы уверены, что хотите удалить персонажа "${props.character.name}"? Это действие нельзя отменить.`
+    : `Вы уверены, что хотите удалить персонажа "${props.character.name}" игрока ${props.character.ownerNickname}? Это действие нельзя отменить.`
+    
+  if (confirm(confirmText)) {
     const charId = props.character.id
     charactersStore.deleteCharacter(charId)
     
-    // Уведомляем мастера об удалении
+    // Уведомляем мастера об удалении (если удаляет игрок)
+    // Или уведомляем игрока об удалении (если удаляет мастер)
     sessionStore.sendCharacterDelete(charId)
     
     emit('close')
@@ -346,13 +453,13 @@ const getDifficultyBorderStyle = (difficulty) => {
     <div class="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
     
     <!-- Кнопка удаления -->
-    <div class="flex items-center justify-end gap-4 mb-4">
+    <div v-if="canDelete" class="flex items-center justify-end gap-4 mb-4">
       <button
         @click="deleteCharacter"
         class="px-4 py-2 rounded-lg bg-red-900/40 border border-red-700/50 text-red-300 hover:bg-red-900/60 transition flex items-center gap-2"
       >
         <span>🗑️</span>
-        <span>Удалить персонажа</span>
+        <span>{{ isOwner ? 'Удалить персонажа' : 'Удалить (мастер)' }}</span>
       </button>
     </div>
     
@@ -425,9 +532,222 @@ const getDifficultyBorderStyle = (difficulty) => {
       <HealthDisplay
         :combat="character.combat || { healthType: 'simple', hp: 0, maxHp: 8, wounds: { scratch: 0, light: 0, heavy: 0, deadly: 0 } }"
         :stats="character.stats || {}"
-        :readonly="true"
+        :readonly="!isMaster && !isOwner"
+        @update:combat="handleCombatUpdate"
       />
     </div>
+    
+    <!-- Мастерское редактирование характеристик -->
+    <div v-if="isMaster" class="stats-editor-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg sm:text-xl font-bold text-slate-300 uppercase tracking-wide">Характеристики:</h2>
+        <button 
+          @click="openStatsEditor"
+          class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm transition"
+        >
+          ✏️ Редактировать
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        <div 
+          v-for="aspect in statAspects" 
+          :key="aspect.id"
+          class="stat-card p-3 rounded-lg border text-center"
+          :style="{ 
+            backgroundColor: aspect.color + '20', 
+            borderColor: aspect.color + '60' 
+          }"
+        >
+          <div class="flex items-center justify-center gap-1 mb-1">
+            <Icon :icon="aspect.characteristicIcon || aspect.icon" class="text-lg" :style="{ color: aspect.color }" />
+          </div>
+          <div class="text-xs text-slate-400 mb-1">{{ aspect.characteristic?.name || aspect.name }}</div>
+          <div class="text-xl font-bold" :style="{ color: aspect.color }">
+            {{ character.stats?.[aspect.id] || 0 }}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Мастерское редактирование навыков -->
+    <div v-if="isMaster" class="skills-editor-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg sm:text-xl font-bold text-slate-300 uppercase tracking-wide">Навыки персонажа:</h2>
+        <button 
+          @click="openSkillsEditor"
+          class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm transition"
+        >
+          ✏️ Редактировать
+        </button>
+      </div>
+      
+      <div v-if="character.skills?.length" class="space-y-2">
+        <div 
+          v-for="skill in character.skills" 
+          :key="skill.id"
+          class="skill-item p-3 bg-slate-800/50 rounded-lg border border-slate-700"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-semibold text-slate-200">{{ getSkillData(skill.id)?.name || skill.id }}</span>
+              <span class="text-amber-400 ml-2">Ур. {{ skill.level }}</span>
+            </div>
+            <div class="text-xs text-slate-400">
+              {{ getSkillData(skill.id)?.aspectId }}
+            </div>
+          </div>
+          <div v-if="getSkillData(skill.id)?.levels?.[skill.level - 1]" class="text-sm text-slate-400 mt-1">
+            {{ getSkillData(skill.id).levels[skill.level - 1].description }}
+          </div>
+        </div>
+      </div>
+      <div v-else class="text-slate-500 text-center py-4">
+        Навыки не назначены
+      </div>
+    </div>
+    
+    <!-- Модальное окно редактирования характеристик -->
+    <Teleport to="body">
+      <div v-if="showStatsEditor" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-white/20 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <h3 class="text-xl font-bold mb-4 text-slate-200">Редактирование характеристик</h3>
+          
+          <div class="space-y-4">
+            <div 
+              v-for="aspect in statAspects" 
+              :key="aspect.id"
+              class="flex items-center gap-4"
+            >
+              <div class="flex items-center gap-2 flex-1">
+                <Icon :icon="aspect.characteristicIcon || aspect.icon" class="text-xl" :style="{ color: aspect.color }" />
+                <span class="font-medium" :style="{ color: aspect.color }">
+                  {{ aspect.characteristic?.name || aspect.name }}
+                </span>
+              </div>
+              <input 
+                type="number" 
+                v-model.number="editingStats[aspect.id]"
+                class="w-20 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-center text-lg font-bold"
+                min="-5"
+                max="10"
+              />
+            </div>
+          </div>
+          
+          <div class="flex gap-3 mt-6">
+            <button 
+              @click="showStatsEditor = false"
+              class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+            >
+              Отмена
+            </button>
+            <button 
+              @click="saveStats"
+              class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition"
+            >
+              Сохранить
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+    
+    <!-- Модальное окно редактирования навыков -->
+    <Teleport to="body">
+      <div v-if="showSkillsEditor" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-white/20 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <h3 class="text-xl font-bold mb-4 text-slate-200">Редактирование навыков</h3>
+          
+          <!-- Добавление нового навыка -->
+          <div class="mb-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+            <div class="flex gap-3 items-end">
+              <div class="flex-1">
+                <label class="block text-sm text-slate-400 mb-1">Навык</label>
+                <select 
+                  v-model="newSkillId"
+                  class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg"
+                >
+                  <option value="">Выберите навык...</option>
+                  <option 
+                    v-for="skill in allSkills" 
+                    :key="skill.id" 
+                    :value="skill.id"
+                    :disabled="editingSkills.some(s => s.id === skill.id)"
+                  >
+                    {{ skill.name }} ({{ skill.aspectId }})
+                  </option>
+                </select>
+              </div>
+              <div class="w-24">
+                <label class="block text-sm text-slate-400 mb-1">Уровень</label>
+                <select 
+                  v-model.number="newSkillLevel"
+                  class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg"
+                >
+                  <option :value="1">1</option>
+                  <option :value="2">2</option>
+                  <option :value="3">3</option>
+                </select>
+              </div>
+              <button 
+                @click="addSkill"
+                :disabled="!newSkillId"
+                class="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition"
+              >
+                + Добавить
+              </button>
+            </div>
+          </div>
+          
+          <!-- Список текущих навыков -->
+          <div v-if="editingSkills.length" class="space-y-2 mb-4">
+            <div 
+              v-for="skill in editingSkills" 
+              :key="skill.id"
+              class="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700"
+            >
+              <div class="flex-1">
+                <span class="font-semibold text-slate-200">{{ getSkillData(skill.id)?.name || skill.id }}</span>
+              </div>
+              <select 
+                :value="skill.level"
+                @change="updateSkillLevel(skill.id, $event.target.value)"
+                class="w-24 px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-center"
+              >
+                <option :value="1">Ур. 1</option>
+                <option :value="2">Ур. 2</option>
+                <option :value="3">Ур. 3</option>
+              </select>
+              <button 
+                @click="removeSkill(skill.id)"
+                class="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/50 text-red-300 rounded-lg transition"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div v-else class="text-center text-slate-500 py-4 mb-4">
+            Навыки не добавлены
+          </div>
+          
+          <div class="flex gap-3">
+            <button 
+              @click="showSkillsEditor = false"
+              class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+            >
+              Отмена
+            </button>
+            <button 
+              @click="saveSkills"
+              class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition"
+            >
+              Сохранить
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
     
     <!-- Таблица проверок -->
     <div class="checks-section bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6">
