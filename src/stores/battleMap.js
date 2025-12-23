@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
-import { HEX_ORIENTATIONS } from '@/utils/hexGrid'
-import { SELECTION_SHAPES, SELECTION_MODES, SELECTION_BEHAVIORS } from '@/utils/selection'
+import { HEX_ORIENTATIONS } from '@/utils/hex/grid'
+import { SELECTION_SHAPES, SELECTION_MODES, SELECTION_BEHAVIORS } from '@/utils/hex/selection'
+import { 
+  buildHexPassability, 
+  calculatePassability,
+  terrainToPassabilityRules 
+} from '@/utils/hex/passability'
+import { useMapHistoryStore } from './mapHistory'
 
 /**
  * Типы масштабов карт
@@ -188,8 +194,17 @@ export const useBattleMapStore = defineStore('battleMap', {
       shape: SELECTION_SHAPES.RECTANGLE,      // Форма выделения
       mode: SELECTION_MODES.REPLACE,          // Режим применения
       behavior: SELECTION_BEHAVIORS.STANDARD, // Поведение захвата гексов
-      lineWidth: 2                            // Ширина линии (в гексах)
+      lineWidth: 1                            // Ширина линии (в гексах)
     },
+    
+    // === Настройки кисти ===
+    brush: {
+      size: 1,                                // Размер кисти (радиус в гексах)
+      type: 'terrain'                         // Что рисуем: terrain | profile
+    },
+    
+    // Текущий профиль заливки (для brush type=profile)
+    selectedProfileId: null,
     
     // Кастомные ассеты (загруженные мастером)
     customAssets: new Map(), // id -> { id, name, type, dataUrl, thumbnail }
@@ -203,22 +218,47 @@ export const useBattleMapStore = defineStore('battleMap', {
   }),
   
   persist: {
-    key: 'trip-battlemap-v1',
-    paths: ['maps', 'activeMapId', 'customAssets'],
+    key: 'trip-battlemap-v2',
+    paths: ['maps', 'activeMapId', 'customAssets', 'editorMode', 'selectedTerrain', 'selection', 'brush', 'selectedProfileId', 'editingMapId'],
     serializer: {
       serialize: (state) => {
         return JSON.stringify({
           maps: state.maps.map(serializeMap),
           activeMapId: state.activeMapId,
-          customAssets: Array.from(state.customAssets?.entries?.() || [])
+          customAssets: Array.from(state.customAssets?.entries?.() || []),
+          // Editor state
+          editorMode: state.editorMode,
+          selectedTerrain: state.selectedTerrain,
+          selection: state.selection,
+          brush: state.brush,
+          selectedProfileId: state.selectedProfileId,
+          editingMapId: state.editingMapId
         })
       },
       deserialize: (stored) => {
         const data = JSON.parse(stored)
+        // Дефолтные значения для selection и brush
+        const defaultSelection = {
+          shape: SELECTION_SHAPES.RECTANGLE,
+          mode: SELECTION_MODES.REPLACE,
+          behavior: SELECTION_BEHAVIORS.STANDARD,
+          lineWidth: 1
+        }
+        const defaultBrush = {
+          size: 1,
+          type: 'terrain'
+        }
         return {
           maps: (data.maps || []).map(deserializeMap),
           activeMapId: data.activeMapId,
-          customAssets: new Map(data.customAssets || [])
+          customAssets: new Map(data.customAssets || []),
+          // Editor state с мержем дефолтов
+          editorMode: data.editorMode || 'select',
+          selectedTerrain: data.selectedTerrain || 'grass',
+          selection: { ...defaultSelection, ...(data.selection || {}) },
+          brush: { ...defaultBrush, ...(data.brush || {}) },
+          selectedProfileId: data.selectedProfileId || null,
+          editingMapId: data.editingMapId || null
         }
       }
     }
@@ -401,7 +441,7 @@ export const useBattleMapStore = defineStore('battleMap', {
     },
     
     /**
-     * Установить террейн в гексе
+     * Установить террейн в гексе (null = удалить)
      */
     setHexTerrain(mapId, q, r, terrainType) {
       const map = this.maps.find(m => m.id === mapId)
@@ -411,25 +451,148 @@ export const useBattleMapStore = defineStore('battleMap', {
       if (!terrainLayer) return
       
       const key = `${q},${r}`
-      terrainLayer.data.set(key, { terrain: terrainType })
+      const oldTerrain = terrainLayer.data.get(key)?.terrain || null
+      
+      // Пропускаем если нет изменений
+      if (oldTerrain === terrainType) return
+      
+      // Записываем в историю
+      const historyStore = useMapHistoryStore()
+      historyStore.recordTerrainChange(mapId, q, r, oldTerrain, terrainType)
+      
+      if (terrainType === null) {
+        // Удаляем гекс
+        terrainLayer.data.delete(key)
+      } else {
+        // Устанавливаем террейн
+        terrainLayer.data.set(key, { terrain: terrainType })
+      }
+      
       map.updatedAt = Date.now()
       map.bakedImage = null // Инвалидируем кэш
     },
     
     /**
      * Получить террейн гекса
+     * @returns {string|null} - ID террейна или null если гекс пустой
      */
     getHexTerrain(mapId, q, r) {
       const map = this.maps.find(m => m.id === mapId)
-      if (!map) return 'void'
+      if (!map) return null
       
       const terrainLayer = map.layers.find(l => l.type === LAYER_TYPES.TERRAIN)
-      if (!terrainLayer) return 'void'
+      if (!terrainLayer) return null
       
       const key = `${q},${r}`
-      return terrainLayer.data.get(key)?.terrain || 'void'
+      return terrainLayer.data.get(key)?.terrain || null
     },
     
+    /**
+     * Получить все модификаторы движения на гексе
+     * (объекты на слое features, которые влияют на стоимость)
+     * 
+     * @returns {Array<{id, name, costModifier, costAdd}>}
+     */
+    getHexModifiers(mapId, q, r) {
+      const map = this.maps.find(m => m.id === mapId)
+      if (!map) return []
+      
+      const featuresLayer = map.layers.find(l => l.type === LAYER_TYPES.FEATURES)
+      if (!featuresLayer) return []
+      
+      const key = `${q},${r}`
+      const data = featuresLayer.data.get(key)
+      if (!data?.objects) return []
+      
+      // Возвращаем только объекты, влияющие на движение
+      return data.objects.filter(obj => 
+        obj.costModifier !== undefined || obj.costAdd !== undefined
+      )
+    },
+    
+    /**
+     * Получить полную информацию о гексе для pathfinding
+     * Включает базовый террейн + объекты + токены
+     * 
+     * @param {string} mapId - ID карты
+     * @param {number} q - координата q
+     * @param {number} r - координата r
+     * @param {Object} terrainStore - стор террейнов
+     * @param {Object} options - опции
+     * @param {string} options.viewerId - ID персонажа (для определения союзников)
+     * @param {Set<string>} options.characterTags - теги способностей персонажа
+     * @returns {{ movementCost: number, passable: boolean, damage: number, passability: Object, terrain: Object } | null}
+     */
+    getHexPathfindingData(mapId, q, r, terrainStore, options = {}) {
+      const { viewerId = null, characterTags = new Set() } = options
+      
+      const terrainId = this.getHexTerrain(mapId, q, r)
+      
+      // Пустой гекс (не void террейн, а отсутствие данных)
+      if (!terrainId || terrainId === '') return null
+      
+      const terrain = terrainStore.getTerrainById(terrainId)
+      if (!terrain) return null
+      
+      // Собираем объекты на гексе
+      const objects = this.getHexObjects(mapId, q, r)
+      
+      // Токен на гексе
+      const token = this.getTokenAt(mapId, q, r)
+      
+      // TODO: эффекты на гексе (пока пусто)
+      const effects = []
+      
+      // Собираем все правила проходимости
+      const hexPassability = buildHexPassability(terrain, objects, token, effects, viewerId)
+      
+      // Вычисляем проходимость для конкретного персонажа
+      const result = calculatePassability(hexPassability, characterTags)
+      
+      return {
+        // Поля для pathfinding
+        movementCost: result.cost,
+        passable: result.passable,
+        damage: result.damage,
+        // Данные о проходимости (для UI)
+        passability: hexPassability,
+        // Данные о террейне
+        biome: terrain.biome || 'default',
+        terrain
+      }
+    },
+    
+    /**
+     * Получить объекты на гексе (features + structures)
+     */
+    getHexObjects(mapId, q, r) {
+      const map = this.maps.find(m => m.id === mapId)
+      if (!map) return []
+      
+      const key = `${q},${r}`
+      const result = []
+      
+      // Объекты с features
+      const featuresLayer = map.layers.find(l => l.type === LAYER_TYPES.FEATURES)
+      if (featuresLayer) {
+        const data = featuresLayer.data.get(key)
+        if (data?.objects) {
+          result.push(...data.objects)
+        }
+      }
+      
+      // Объекты со structures
+      const structuresLayer = map.layers.find(l => l.type === LAYER_TYPES.STRUCTURES)
+      if (structuresLayer) {
+        const data = structuresLayer.data.get(key)
+        if (data?.objects) {
+          result.push(...data.objects)
+        }
+      }
+      
+      return result
+    },
+
     /**
      * Добавить объект в гекс (на слой features/structures)
      */
@@ -891,6 +1054,27 @@ export const useBattleMapStore = defineStore('battleMap', {
     },
     
     /**
+     * Установить размер кисти
+     */
+    setBrushSize(size) {
+      this.brush.size = Math.max(1, Math.min(5, size))
+    },
+    
+    /**
+     * Установить тип рисования (terrain/profile)
+     */
+    setBrushType(type) {
+      this.brush.type = type
+    },
+    
+    /**
+     * Выбрать профиль заливки
+     */
+    setSelectedProfile(profileId) {
+      this.selectedProfileId = profileId
+    },
+
+    /**
      * Заполнить выбранные гексы террейном
      */
     fillSelectedHexes(hexKeys, terrainType) {
@@ -977,6 +1161,84 @@ export const useBattleMapStore = defineStore('battleMap', {
       
       map.updatedAt = Date.now()
       map.bakedImage = null
+    },
+    
+    /**
+     * Применить операцию из истории (для undo/redo)
+     * Не записывает в историю!
+     */
+    applyHistoryOperation(operation) {
+      if (!operation || !operation.changes) return false
+      
+      const map = this.maps.find(m => m.id === operation.mapId)
+      if (!map) return false
+      
+      const terrainLayer = map.layers.find(l => l.type === LAYER_TYPES.TERRAIN)
+      if (!terrainLayer) return false
+      
+      // Применяем изменения
+      for (const change of operation.changes) {
+        const key = `${change.q},${change.r}`
+        
+        if (change.newValue === null) {
+          // Удаление гекса
+          terrainLayer.data.delete(key)
+        } else {
+          // Установка террейна
+          terrainLayer.data.set(key, { terrain: change.newValue })
+        }
+      }
+      
+      map.updatedAt = Date.now()
+      map.bakedImage = null
+      
+      return true
+    },
+    
+    /**
+     * Отменить последнее действие
+     */
+    undo() {
+      const historyStore = useMapHistoryStore()
+      if (!historyStore.canUndo) return false
+      
+      historyStore.setUndoRedoInProgress(true)
+      const operation = historyStore.undo()
+      const success = this.applyHistoryOperation(operation)
+      historyStore.setUndoRedoInProgress(false)
+      
+      return success
+    },
+    
+    /**
+     * Повторить отменённое действие
+     */
+    redo() {
+      const historyStore = useMapHistoryStore()
+      if (!historyStore.canRedo) return false
+      
+      historyStore.setUndoRedoInProgress(true)
+      const operation = historyStore.redo()
+      const success = this.applyHistoryOperation(operation)
+      historyStore.setUndoRedoInProgress(false)
+      
+      return success
+    },
+    
+    /**
+     * Начать транзакцию (для группировки операций)
+     */
+    beginHistoryTransaction(type, mapId) {
+      const historyStore = useMapHistoryStore()
+      historyStore.beginTransaction(type, mapId || this.editingMapId)
+    },
+    
+    /**
+     * Завершить транзакцию
+     */
+    endHistoryTransaction() {
+      const historyStore = useMapHistoryStore()
+      historyStore.endTransaction()
     }
   }
 })

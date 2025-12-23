@@ -57,6 +57,11 @@ export const useSessionStore = defineStore('session', {
     splashQueue: [],
     currentSplash: null,
     
+    // Очередь сообщений для отложенной отправки (режим планирования мастера)
+    // Накапливает любые сообщения (анимации, атаки, эффекты и т.д.)
+    messageQueue: [],
+    isQueuePaused: false, // true = накапливаем сообщения, false = отправляем сразу
+    
     // Обработчики сообщений (для внешней регистрации слушателей)
     messageHandlers: {}
   }),
@@ -75,16 +80,25 @@ export const useSessionStore = defineStore('session', {
         ? ctx.store.messages.slice(-MAX_PERSISTED_MESSAGES)
         : []
       
-      // Обработчик закрытия страницы - корректно уничтожаем peer
+      // Обработчик закрытия страницы - отключаемся от сервера (но не уничтожаем peer)
+      // Используем disconnect() вместо destroy() - это позволит серверу быстрее освободить ID
       const handleBeforeUnload = () => {
-        if (ctx.store.peer) {
+        if (ctx.store.peer && !ctx.store.peer.destroyed) {
           try {
-            ctx.store.peer.destroy()
+            // disconnect() отправляет сигнал серверу о закрытии
+            ctx.store.peer.disconnect()
           } catch (_) {}
         }
       }
       
-      // Удаляем старый обработчик если был
+      // Обработчик для видимости страницы (mobile browsers)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden' && ctx.store.peer && !ctx.store.peer.destroyed) {
+          // Не отключаемся при скрытии - только при закрытии
+        }
+      }
+      
+      // Удаляем старые обработчики
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.addEventListener('beforeunload', handleBeforeUnload)
       
@@ -331,13 +345,28 @@ export const useSessionStore = defineStore('session', {
       }
     },
     scheduleReconnect() {
+      // Если уже есть активный таймер переподключения, не создаём новый
+      if (this.reconnectTimer) {
+        console.log('[Session] Reconnect already scheduled, skipping')
+        return
+      }
+      
+      // Проверяем лимит попыток
+      if (this.reconnectAttempts >= 5) {
+        console.log('[Session] Max reconnect attempts reached')
+        this.addMessage(systemMessage('Превышено количество попыток переподключения.'))
+        return
+      }
+      
       this.clearReconnectTimer()
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
       this.reconnectAttempts += 1
       
+      console.log(`[Session] Scheduling reconnect #${this.reconnectAttempts} in ${delay}ms`)
       this.addMessage(systemMessage(`Переподключение через ${Math.round(delay / 1000)} сек...`))
       
       this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null
         if (this.role === 'master' && this.roomId) {
           this.createRoom()
         } else if (this.role === 'player' && this.roomId) {
@@ -363,8 +392,20 @@ export const useSessionStore = defineStore('session', {
       this.disconnect({ resetRole: true })
       this.messages = []
     },
-    disconnect({ resetRole = false } = {}) {
+    disconnect({ resetRole = false, keepPeer = false } = {}) {
       this.clearReconnectTimer()
+      
+      // Очищаем таймауты создания/подключения
+      if (this._createTimeout) {
+        clearTimeout(this._createTimeout)
+        this._createTimeout = null
+      }
+      if (this._connectTimeout) {
+        clearTimeout(this._connectTimeout)
+        this._connectTimeout = null
+      }
+      
+      // Закрываем data connections, но не peer (если keepPeer=true)
       this.connections.forEach((entry) => {
         try {
           entry.conn?.close?.()
@@ -381,16 +422,18 @@ export const useSessionStore = defineStore('session', {
       }
       this.connections = []
       this.activeConnection = null
-      if (this.peer) {
+      
+      // Уничтожаем peer только если не keepPeer
+      if (!keepPeer && this.peer) {
         try {
-          this.peer.disconnect?.()
           this.peer.destroy?.()
         } catch (_) {
           /* noop */
         }
+        this.peer = null
+        this.peerId = ''
       }
-      this.peer = null
-      this.peerId = ''
+      
       this.status = 'idle'
       this.error = ''
       if (resetRole) {
@@ -412,10 +455,21 @@ export const useSessionStore = defineStore('session', {
       this.createRoom()
     },
     async createRoom() {
+      // Защита от повторных вызовов
+      if (this.status === 'connecting' && this.role === 'master') {
+        console.log('[Session] Already creating room, skipping')
+        return
+      }
+      
+      // Если уже готова комната с этим ID, не пересоздаём
+      if (this.status === 'ready' && this.peer?.open && this.roomId) {
+        console.log('[Session] Room already ready:', this.roomId)
+        return
+      }
+      
       if (this.role !== 'master') {
         this.setRole('master')
       }
-      this.disconnect({ resetRole: false })
       
       // Если roomId уже существует (переподключение), используем его
       if (!this.roomId) {
@@ -423,10 +477,47 @@ export const useSessionStore = defineStore('session', {
         this.messages = []
       }
       
+      // Проверяем, можно ли переиспользовать существующий peer
+      if (this.peer && !this.peer.destroyed && this.peer.id === this.roomId) {
+        console.log('[Session] Reusing existing peer:', this.peer.id)
+        
+        // Peer уже существует и подключён к серверу
+        if (this.peer.open) {
+          this.status = 'ready'
+          this.peerId = this.peer.id
+          this.addMessage(systemMessage(`Комната ${this.roomId} активна.`))
+          return
+        }
+        
+        // Peer существует но отключён - пробуем reconnect
+        if (this.peer.disconnected && !this.peer.destroyed) {
+          console.log('[Session] Attempting peer.reconnect()...')
+          this.status = 'connecting'
+          this.peer.reconnect()
+          return
+        }
+      }
+      
+      // Закрываем старые соединения, но создаём новый peer
+      this.disconnect({ resetRole: false })
+      
       this.error = ''
       this.status = 'connecting'
+      
+      console.log('[Session] Creating room with ID:', this.roomId)
+      
       const peer = new Peer(this.roomId, peerConfig)
       this.peer = peer
+      
+      // Таймаут на создание комнаты (20 сек)
+      this._createTimeout = setTimeout(() => {
+        if (this.status === 'connecting') {
+          console.log('[Session] Room creation timeout')
+          this.error = 'Время ожидания создания комнаты истекло'
+          this.status = 'error'
+          this.addMessage(systemMessage('Не удалось создать комнату - сервер не отвечает. Попробуйте ещё раз.'))
+        }
+      }, 20000)
       
       // Устанавливаем коллбэк для уведомления об изменениях профиля
       const userStore = useUserStore()
@@ -435,6 +526,11 @@ export const useSessionStore = defineStore('session', {
       })
       
       peer.on('open', (id) => {
+        if (this._createTimeout) {
+          clearTimeout(this._createTimeout)
+          this._createTimeout = null
+        }
+        console.log('[Session] Room created, peer ID:', id)
         this.peerId = id
         this.status = 'ready'
         this.reconnectAttempts = 0
@@ -453,13 +549,18 @@ export const useSessionStore = defineStore('session', {
       })
       
       peer.on('error', (err) => {
+        if (this._createTimeout) {
+          clearTimeout(this._createTimeout)
+          this._createTimeout = null
+        }
         const errorMessage = err?.message ?? String(err)
         this.error = errorMessage
         this.status = 'error'
         
-        // Специальная обработка ошибки "ID is taken"
-        if (errorMessage.includes('is taken') || errorMessage.includes('ID is taken')) {
-          console.log('[Session] ID is taken, will retry with delay...')
+        // Специальная обработка ошибки "ID is taken" (unavailable-id)
+        // Это означает, что сервер ещё держит старое соединение
+        if (errorMessage.includes('is taken') || errorMessage.includes('ID is taken') || err?.type === 'unavailable-id') {
+          console.log('[Session] ID is taken - old session still exists on server')
           
           // Уничтожаем текущий peer
           if (this.peer) {
@@ -469,21 +570,29 @@ export const useSessionStore = defineStore('session', {
             this.peer = null
           }
           
-          // Ждём дольше перед повторной попыткой (сервер PeerJS освобождает ID через ~10 сек)
+          // Пробуем несколько раз с небольшой задержкой
+          // PeerJS сервер освобождает ID через ~5-10 секунд после disconnect
           if (this.reconnectAttempts < 5) {
-            this.clearReconnectTimer()
-            const delay = Math.max(3000, 2000 * (this.reconnectAttempts + 1)) // 3, 4, 6, 8, 10 сек
             this.reconnectAttempts += 1
-            this.addMessage(systemMessage(`ID занят, повторная попытка через ${Math.round(delay / 1000)} сек...`))
+            const delay = 2000 // 2 секунды между попытками
+            
+            if (this.reconnectAttempts === 1) {
+              this.addMessage(systemMessage('Ожидаем освобождения ID...'))
+            }
+            
+            console.log(`[Session] Retry ${this.reconnectAttempts}/5 in ${delay}ms`)
+            
+            this.clearReconnectTimer()
             this.reconnectTimer = setTimeout(() => {
+              this.reconnectTimer = null
+              this.status = 'idle' // Сбрасываем статус для повторного вызова
               this.createRoom()
             }, delay)
           } else {
-            // После 5 попыток - создаём новую комнату с новым ID
-            this.addMessage(systemMessage('Не удалось восстановить комнату. Создаём новую...'))
-            this.roomId = ''
+            // После 5 попыток (10 сек) - предлагаем новую комнату
+            this.addMessage(systemMessage('Не удалось восстановить комнату. Создайте новую.'))
             this.reconnectAttempts = 0
-            setTimeout(() => this.createRoom(), 1000)
+            this.status = 'error'
           }
           return
         }
@@ -576,6 +685,9 @@ export const useSessionStore = defineStore('session', {
         } else if (payload.type === 'character-action') {
           // Обработка действий игрока (перемещение, атака и т.д.)
           this.handleCharacterAction(payload, conn)
+        } else if (payload.type === 'token-animation') {
+          // Анимация движения токена от игрока
+          this.handleTokenAnimation(payload, conn)
         } else if (payload.type === 'reaction-response') {
           // Ответ игрока на предложение реакции
           console.log('Получен ответ на реакцию от игрока:', payload)
@@ -636,10 +748,22 @@ export const useSessionStore = defineStore('session', {
         this.error = 'Введите код комнаты.'
         return
       }
+      
+      // Защита от повторных вызовов - если уже подключаемся к этой комнате, игнорируем
+      if (this.status === 'connecting' && this.roomId === trimmed) {
+        console.log('[Session] Already connecting to room:', trimmed)
+        return
+      }
+      
+      // Если уже в комнате, не переподключаемся
+      if (this.status === 'in-room' && this.roomId === trimmed && this.activeConnection?.open) {
+        console.log('[Session] Already in room:', trimmed)
+        return
+      }
+      
       if (this.role !== 'player') {
         this.setRole('player')
       }
-      this.disconnect({ resetRole: false })
       
       // Очищаем персонажей других игроков из localStorage
       const charactersStore = useCharactersStore()
@@ -655,8 +779,51 @@ export const useSessionStore = defineStore('session', {
       this.roomId = trimmed
       this.error = ''
       this.status = 'connecting'
+      
+      console.log('[Session] Player joining room:', trimmed)
+      
+      // Проверяем, можно ли переиспользовать существующий peer
+      if (this.peer && !this.peer.destroyed) {
+        console.log('[Session] Reusing existing player peer:', this.peer.id)
+        
+        // Peer уже подключён к серверу - сразу подключаемся к мастеру
+        if (this.peer.open) {
+          this.connectToMaster(trimmed)
+          return
+        }
+        
+        // Peer отключён - пробуем reconnect
+        if (this.peer.disconnected) {
+          console.log('[Session] Attempting peer.reconnect()...')
+          
+          // Добавляем одноразовый слушатель для reconnect
+          const onReconnectOpen = (id) => {
+            console.log('[Session] Player peer reconnected with ID:', id)
+            this.peerId = id
+            this.connectToMaster(trimmed)
+          }
+          this.peer.once('open', onReconnectOpen)
+          
+          this.peer.reconnect()
+          return
+        }
+      }
+      
+      // Закрываем старые соединения и создаём новый peer
+      this.disconnect({ resetRole: false })
+      this.status = 'connecting'
+      
+      console.log('[Session] Creating new player peer...')
+      console.log('[Session] PeerJS config:', peerConfig)
+      
       const peer = new Peer(undefined, peerConfig)
       this.peer = peer
+      
+      peer.on('open', (id) => {
+        console.log('[Session] Player peer opened with ID:', id)
+        this.peerId = id
+        this.connectToMaster(trimmed)
+      })
       
       // Устанавливаем коллбэк для уведомления об изменениях профиля
       const userStore = useUserStore()
@@ -664,12 +831,8 @@ export const useSessionStore = defineStore('session', {
         this.broadcastProfileUpdate(userId, nickname, avatar, playerIcon, playerColor)
       })
       
-      peer.on('open', (id) => {
-        this.peerId = id
-        this.connectToMaster(trimmed)
-      })
-      
       peer.on('error', (err) => {
+        console.log('[Session] Player peer error:', err)
         this.error = err?.message ?? String(err)
         this.status = 'error'
         
@@ -697,12 +860,35 @@ export const useSessionStore = defineStore('session', {
       const avatar = userStore.avatar
       const userId = userStore.userId
       
+      console.log('[Session] Connecting to master:', roomCode)
+      
       const conn = this.peer.connect(roomCode, { 
-        metadata: { alias, avatar, userId } 
+        metadata: { alias, avatar, userId },
+        reliable: true
       })
       this.activeConnection = conn
       
+      // Таймаут на подключение к мастеру (15 сек)
+      this._connectTimeout = setTimeout(() => {
+        if (this.status === 'connecting') {
+          console.log('[Session] Connection timeout to master')
+          this.error = 'Время ожидания подключения истекло'
+          this.status = 'error'
+          this.addMessage(systemMessage('Не удалось подключиться - мастер не отвечает. Убедитесь, что комната создана.'))
+          
+          // Попробуем переподключиться
+          if (this.reconnectAttempts < 3) {
+            this.scheduleReconnect()
+          }
+        }
+      }, 15000)
+      
       conn.on('open', () => {
+        if (this._connectTimeout) {
+          clearTimeout(this._connectTimeout)
+          this._connectTimeout = null
+        }
+        console.log('[Session] Connected to master!')
         this.status = 'in-room'
         this.reconnectAttempts = 0
         this.clearReconnectTimer()
@@ -722,6 +908,27 @@ export const useSessionStore = defineStore('session', {
           this.handleMapSync(payload)
         } else if (payload.type === 'character-sync') {
           this.handleCharacterSync(payload)
+        } else if (payload.type === 'pointer-update') {
+          // Обновление указки мастера
+          this.handlePointerUpdate(payload)
+        } else if (payload.type === 'pointer-ping') {
+          // Пинг-метка от мастера
+          this.handlePointerPing(payload)
+        } else if (payload.type === 'pointer-drawing') {
+          // Рисунок от мастера
+          this.handlePointerDrawing(payload)
+        } else if (payload.type === 'pointer-shape') {
+          // Фигура от мастера
+          this.handlePointerShape(payload)
+        } else if (payload.type === 'pointer-clear') {
+          // Очистка меток
+          this.handlePointerClear(payload)
+        } else if (payload.type === 'pointer-measurement') {
+          // Измерение расстояния
+          this.handlePointerMeasurement(payload)
+        } else if (payload.type === 'pointer-range') {
+          // Зона досягаемости
+          this.handlePointerRange(payload)
         } else if (payload.type === 'scene-sync') {
           // Синхронизация всех событий сцены при подключении
           this.triggerMessageHandlers('scene-sync', payload)
@@ -743,6 +950,10 @@ export const useSessionStore = defineStore('session', {
         } else if (payload.type === 'action-error') {
           // Ошибка действия от мастера
           this.handleActionError(payload)
+        } else if (payload.type === 'token-animation') {
+          // Анимация движения токена от другого игрока (через мастера)
+          console.log('[Session Player] Received token animation:', payload)
+          this.triggerMessageHandlers('token-animation', payload)
         } else if (payload.type === 'reaction-prompt') {
           // Предложение реакции от мастера
           this.triggerMessageHandlers('reaction-prompt', payload)
@@ -769,6 +980,7 @@ export const useSessionStore = defineStore('session', {
       })
       
       conn.on('close', () => {
+        console.log('[Session] Connection to master closed')
         this.status = 'error'
         this.addMessage(systemMessage('Мастер закрыл соединение.'))
         
@@ -781,6 +993,7 @@ export const useSessionStore = defineStore('session', {
       })
       
       conn.on('error', (err) => {
+        console.log('[Session] Connection error:', err)
         this.error = err?.message ?? String(err)
         this.status = 'error'
         
@@ -838,7 +1051,10 @@ export const useSessionStore = defineStore('session', {
           class: c.class,
           race: c.race,
           gender: c.gender,
-          skills: c.skills
+          skills: c.skills,
+          equipment: c.equipment,
+          inventory: c.inventory,
+          customItems: c.customItems
         }))
       
       // Собираем видимых NPC для отправки
@@ -1225,7 +1441,162 @@ export const useSessionStore = defineStore('session', {
       console.log('[Session] Sending character move to master:', payload)
       this.activeConnection.send(payload)
     },
+
+    /**
+     * Игрок отправляет анимацию движения для синхронизации с мастером
+     * @param {string} characterId - ID персонажа
+     * @param {Array} path - путь [{q, r}]
+     * @param {number} duration - длительность анимации в мс
+     * @param {number} finalFacing - финальное направление
+     */
+    broadcastTokenAnimation(characterId, path, duration, finalFacing = 0) {
+      if (this.role !== 'player') {
+        console.warn('[Session] broadcastTokenAnimation: not a player')
+        return
+      }
+      
+      if (!this.activeConnection?.open) {
+        console.warn('[Session] broadcastTokenAnimation: no active connection to master')
+        return
+      }
+      
+      const userStore = useUserStore()
+      const payload = {
+        id: createId(),
+        type: 'token-animation',
+        characterId,
+        path,
+        duration,
+        finalFacing,
+        startTime: Date.now(),
+        userId: userStore.userId
+      }
+      
+      console.log('[Session] Sending token animation to master:', payload)
+      this.activeConnection.send(payload)
+    },
     
+    /**
+     * Мастер отправляет анимацию движения всем игрокам
+     * @param {string} characterId - ID персонажа
+     * @param {Array} path - путь [{q, r}]
+     * @param {number} duration - длительность анимации в мс
+     * @param {number} finalFacing - финальное направление
+     * @param {boolean} [bypassQueue=false] - отправить в обход очереди
+     */
+    broadcastTokenAnimationToPlayers(characterId, path, duration, finalFacing = 0, bypassQueue = false) {
+      if (this.role !== 'master') {
+        console.warn('[Session] broadcastTokenAnimationToPlayers: not a master')
+        return
+      }
+      
+      const userStore = useUserStore()
+      const payload = {
+        id: createId(),
+        type: 'token-animation',
+        characterId,
+        path,
+        duration,
+        finalFacing,
+        startTime: Date.now(), // Будет обновлён при отправке из очереди
+        userId: userStore.userId
+      }
+      
+      // Используем систему очередей
+      this.queueOrSend(payload, bypassQueue)
+    },
+    
+    // ============= ОЧЕРЕДЬ СООБЩЕНИЙ (РЕЖИМ ПЛАНИРОВАНИЯ) =============
+    
+    /**
+     * Включить режим планирования - сообщения накапливаются в очереди
+     */
+    pauseQueue() {
+      if (this.role !== 'master') return
+      this.isQueuePaused = true
+      console.log('[Session] Очередь сообщений приостановлена (режим планирования)')
+    },
+    
+    /**
+     * Выключить режим планирования и отправить все накопленные сообщения
+     * @param {Object} options
+     * @param {boolean} [options.sequential=false] - true = отправлять последовательно (с задержками), false = все сразу
+     * @param {number} [options.delay=0] - задержка между сообщениями при sequential режиме (мс)
+     */
+    flushQueue(options = {}) {
+      if (this.role !== 'master') return
+      
+      const { sequential = false, delay = 0 } = options
+      const queue = [...this.messageQueue]
+      this.messageQueue = []
+      this.isQueuePaused = false
+      
+      console.log('[Session] Отправка накопленных сообщений:', queue.length, sequential ? 'последовательно' : 'одновременно')
+      
+      if (!sequential || delay === 0) {
+        // Отправляем все сразу с одинаковым startTime
+        const now = Date.now()
+        queue.forEach(msg => {
+          if (msg.type === 'token-animation') {
+            msg.startTime = now
+          }
+          this.broadcastPayload(msg)
+          // Также воспроизводим локально для мастера
+          this.triggerMessageHandlers(msg.type, msg)
+        })
+      } else {
+        // Отправляем последовательно с задержками
+        let currentDelay = 0
+        queue.forEach((msg, index) => {
+          setTimeout(() => {
+            if (msg.type === 'token-animation') {
+              msg.startTime = Date.now()
+            }
+            this.broadcastPayload(msg)
+            this.triggerMessageHandlers(msg.type, msg)
+          }, currentDelay)
+          
+          // Для анимаций добавляем их длительность + delay
+          if (msg.duration) {
+            currentDelay += msg.duration + delay
+          } else {
+            currentDelay += delay
+          }
+        })
+      }
+    },
+    
+    /**
+     * Очистить очередь без отправки
+     */
+    clearQueue() {
+      this.messageQueue = []
+      console.log('[Session] Очередь сообщений очищена')
+    },
+    
+    /**
+     * Добавить сообщение в очередь или отправить сразу (в зависимости от режима)
+     * @param {Object} payload - сообщение для отправки
+     * @param {boolean} [bypassQueue=false] - true = отправить в обход очереди
+     */
+    queueOrSend(payload, bypassQueue = false) {
+      if (this.role !== 'master') {
+        // Игроки всегда отправляют сразу
+        this.broadcastPayload(payload)
+        return
+      }
+      
+      if (bypassQueue || !this.isQueuePaused) {
+        // Отправляем сразу
+        this.broadcastPayload(payload)
+        this.triggerMessageHandlers(payload.type, payload)
+      } else {
+        // Добавляем в очередь
+        this.messageQueue.push(payload)
+        console.log('[Session] Сообщение добавлено в очередь:', payload.type, 'Всего в очереди:', this.messageQueue.length)
+      }
+    },
+
     /**
      * Обработка полученных данных карты (для игроков)
      */
@@ -1247,6 +1618,99 @@ export const useSessionStore = defineStore('session', {
         console.log('[Session] Token move:', payload.characterId, 'to', payload.q, payload.r)
         battleMapStore.moveTokenByCharacterId(payload.mapId, payload.characterId, payload.q, payload.r)
       }
+    },
+    
+    // ============= УКАЗКА И МЕТКИ =============
+    
+    /**
+     * Обработка обновления указки (для игроков)
+     */
+    handlePointerUpdate(payload) {
+      if (this.role !== 'player') return
+      
+      // Динамически импортируем store чтобы избежать циклической зависимости
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        pointerStore.receivePointerUpdate(payload)
+      })
+    },
+    
+    /**
+     * Обработка пинга (для игроков)
+     */
+    handlePointerPing(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        if (payload.ping) {
+          pointerStore.receivePing(payload.ping)
+        }
+      })
+    },
+    
+    /**
+     * Обработка рисунка (для игроков)
+     */
+    handlePointerDrawing(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        if (payload.drawing) {
+          pointerStore.receiveDrawing(payload.drawing)
+        }
+      })
+    },
+    
+    /**
+     * Обработка фигуры (для игроков)
+     */
+    handlePointerShape(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        if (payload.shape) {
+          pointerStore.receiveShape(payload.shape)
+        }
+      })
+    },
+    
+    /**
+     * Обработка очистки меток (для игроков)
+     */
+    handlePointerClear(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        pointerStore.receiveClear(payload.clearType || 'all')
+      })
+    },
+    
+    /**
+     * Обработка измерения расстояния (для игроков)
+     */
+    handlePointerMeasurement(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        pointerStore.receiveMeasurement(payload)
+      })
+    },
+    
+    /**
+     * Обработка зоны досягаемости (для игроков)
+     */
+    handlePointerRange(payload) {
+      if (this.role !== 'player') return
+      
+      import('./pointer').then(({ usePointerStore }) => {
+        const pointerStore = usePointerStore()
+        pointerStore.receiveRange(payload)
+      })
     },
     
     // ============= СИНХРОНИЗАЦИЯ ПЕРСОНАЖЕЙ =============
@@ -1483,12 +1947,9 @@ export const useSessionStore = defineStore('session', {
             t.ownerId === userStore.userId || receivedIds.has(t.id)
           )
           
-          // Применяем персонажей других игроков и NPC
+          // Применяем персонажей - включая своих (applyReceivedCharacter использует updatedAt для разрешения конфликтов)
           payload.characters.forEach(char => {
-            // Не перезаписываем своих персонажей
-            if (char.ownerId !== userStore.userId) {
-              charactersStore.applyReceivedCharacter(char)
-            }
+            charactersStore.applyReceivedCharacter(char)
           })
         } else if (payload.action === 'tokens' && payload.tokens) {
           // Обновляем информацию о токенах других игроков и NPC
@@ -1522,7 +1983,7 @@ export const useSessionStore = defineStore('session', {
         }
         
         // Проверяем, что игрок владеет этим персонажем
-        const isOwner = character.ownerId === payload.userId
+        const isOwner = character.ownerId === payload.userId || character.ownerId === conn.peer
         if (!isOwner) {
           console.warn('[Session] Player tried to move character they don\'t own')
           this.sendActionError(conn, 'Вы не можете управлять этим персонажем')
@@ -1531,7 +1992,6 @@ export const useSessionStore = defineStore('session', {
           return
         }
         
-        // Перемещаем токен на карте
         const mapId = battleMapStore.activeMapId
         if (!mapId) {
           this.sendActionError(conn, 'Нет активной карты')
@@ -1546,16 +2006,9 @@ export const useSessionStore = defineStore('session', {
           return
         }
         
-        const moved = battleMapStore.moveTokenByCharacterId(mapId, payload.characterId, payload.q, payload.r)
-        console.log('[Session] moveTokenByCharacterId result:', moved, 'facing:', payload.facing)
-        if (!moved) {
-          // Если токен не найден, размещаем впервые
-          battleMapStore.placeToken(mapId, payload.characterId, payload.q, payload.r, payload.facing || 0)
-        } else if (payload.facing !== null && payload.facing !== undefined) {
-          // Если указан facing - обновляем его
-          const rotated = battleMapStore.rotateToken(mapId, payload.q, payload.r, payload.facing)
-          console.log('[Session] rotateToken result:', rotated)
-        }
+        // НЕ перемещаем токен на карте здесь!
+        // Анимация (handleRemoteTokenAnimation в BattleMap) сама переместит токен пошагово.
+        // Здесь только обновляем charactersStore для синхронизации состояния персонажа.
         
         // Обновляем позицию в charactersStore
         if (!character.combat?.position) {
@@ -1564,12 +2017,46 @@ export const useSessionStore = defineStore('session', {
           charactersStore.moveOnMap(payload.characterId, payload.q, payload.r)
         }
         
-        console.log('[Session] Token moved by player:', payload.characterId, 'to', payload.q, payload.r, 'facing:', payload.facing)
+        console.log('[Session] Character position updated (animation handles map token):', payload.characterId, 'to', payload.q, payload.r, 'facing:', payload.facing)
         
-        // Отправляем обновление карты и персонажей всем игрокам
-        this.broadcastMap()
+        // Рассылаем обновление персонажей всем игрокам (не карту - она обновляется анимацией)
         this.broadcastAllCharacters()
       }
+    },
+
+    /**
+     * Обработка анимации движения токена от игрока (на стороне мастера)
+     * Передаёт анимацию на UI для воспроизведения и пересылает другим игрокам
+     */
+    handleTokenAnimation(payload, conn) {
+      if (this.role !== 'master') return
+      
+      console.log('[Session] handleTokenAnimation:', payload)
+      
+      const charactersStore = useCharactersStore()
+      
+      // Проверяем, что персонаж принадлежит этому игроку
+      const character = charactersStore.characters.find(c => c.id === payload.characterId)
+      if (!character) {
+        console.warn('[Session] Character not found:', payload.characterId)
+        return
+      }
+      
+      console.log('[Session] handleTokenAnimation - character.ownerId:', character.ownerId, 'payload.userId:', payload.userId)
+      
+      // Проверяем владельца - может быть по peerId или userId
+      const isOwner = character.ownerId === payload.userId || character.ownerId === conn.peer
+      if (!isOwner) {
+        console.warn('[Session] Player tried to animate character they don\'t own, ownerId:', character.ownerId, 'userId:', payload.userId, 'peerId:', conn.peer)
+        return
+      }
+      
+      // Передаём анимацию в обработчики UI
+      console.log('[Session] Triggering token-animation handlers')
+      this.triggerMessageHandlers('token-animation', payload)
+      
+      // Пересылаем другим игрокам (кроме отправителя)
+      this.broadcastPayload(payload, conn.peer)
     },
     
     /**

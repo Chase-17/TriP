@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { calculateMaxHP, calculateWoundSlots } from '@/utils/wounds'
+import { calculateMaxHP, calculateWoundSlots } from '@/utils/character/wounds'
 import { useUserStore } from '@/stores/user'
 
 /**
@@ -42,12 +42,19 @@ const createEmptyCharacter = (ownerId, options = {}) => ({
   // Навыки
   skills: options.skills || [],
   
+  // Инвентарь (предметы не в руках)
+  inventory: options.inventory || [],
+  
   // Экипировка
   equipment: {
     armor: 'clothes',
-    weapons: [],
-    items: [],
+    weaponSets: [
+      { name: 'Набор 1', weapons: [] },
+      { name: 'Набор 2', weapons: [] }
+    ],
+    activeSetIndex: 0,
     wealth: 5,
+    epoch: 10,
     ...options.equipment
   },
   
@@ -78,6 +85,21 @@ const createEmptyCharacter = (ownerId, options = {}) => ({
     maxMp: options.combat?.maxMp || 0,
     armor: options.combat?.armor || 0,
     initiative: options.combat?.initiative || 0,
+    
+    // Движение
+    baseMovement: options.combat?.baseMovement || 5,  // Базовые очки движения
+    movementModifier: options.combat?.movementModifier || 0,  // Модификатор от брони/умений
+    currentMovement: options.combat?.currentMovement ?? null,  // Текущие ОД (null = начало хода)
+    
+    // Способности для pathfinding
+    movementAbilities: options.combat?.movementAbilities || {
+      flight: false,
+      swimming: false,
+      phasing: false,
+      forestKnowledge: false,
+      swampWalker: false,
+      climbing: false
+    },
     
     // Состояния/эффекты
     conditions: [],
@@ -234,6 +256,91 @@ export const useCharactersStore = defineStore('characters', {
      */
     getNpcById: (state) => (npcId) => {
       return state.npcs.find(n => n.id === npcId) || null
+    },
+    
+    // ====== MOVEMENT GETTERS ======
+    
+    /**
+     * Получить доступные очки движения персонажа
+     */
+    getAvailableMovement: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+        || state.npcs.find(n => n.id === characterId)
+      if (!character) return 5 // Дефолт для ненайденного персонажа
+      return character.combat?.movement?.current ?? 5 // Дефолт если нет структуры
+    },
+    
+    /**
+     * Проверить, остались ли очки движения
+     */
+    hasMovementLeft: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+      if (!character) return false
+      return (character.combat?.movement?.current ?? 0) > 0
+    },
+    
+    /**
+     * Получить базовые очки движения
+     */
+    getBaseMovement: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+      if (!character) return 5
+      return character.combat?.movement?.base ?? 5
+    },
+    
+    /**
+     * Получить доступные порывы персонажа
+     */
+    getAvailableSurges: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+        || state.npcs.find(n => n.id === characterId)
+      if (!character) return 2
+      return character.combat?.surges?.current ?? 2
+    },
+    
+    /**
+     * Получить базовые порывы
+     */
+    getBaseSurges: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+      if (!character) return 2
+      return character.combat?.surges?.base ?? 2
+    },
+    
+    /**
+     * Получить очки движения за один порыв
+     */
+    getSurgeMovement: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+      if (!character) return 2
+      return character.combat?.surges?.movementPerSurge ?? 2
+    },
+    
+    /**
+     * Получить полную информацию о ресурсах движения
+     */
+    getMovementResources: (state) => (characterId) => {
+      const character = state.characters.find(c => c.id === characterId)
+        || state.npcs.find(n => n.id === characterId)
+      
+      if (!character) {
+        return {
+          movement: { current: 5, base: 5 },
+          surges: { current: 2, base: 2, movementPerSurge: 2 }
+        }
+      }
+      
+      return {
+        movement: {
+          current: character.combat?.movement?.current ?? 5,
+          base: character.combat?.movement?.base ?? 5
+        },
+        surges: {
+          current: character.combat?.surges?.current ?? 2,
+          base: character.combat?.surges?.base ?? 2,
+          movementPerSurge: character.combat?.surges?.movementPerSurge ?? 2
+        }
+      }
     }
   },
   
@@ -268,6 +375,7 @@ export const useCharactersStore = defineStore('characters', {
         stats: stats,
         skills: formData.skills ? Object.values(formData.skills).filter(Boolean) : [],
         equipment: formData.equipment,
+        inventory: formData.inventory || [],
         combat: {
           // Начинаем с простой системы HP, мастер может переключить на ранения
           healthType: 'simple',
@@ -302,6 +410,122 @@ export const useCharactersStore = defineStore('characters', {
         return character
       }
       return null
+    },
+    
+    // ====== MOVEMENT ACTIONS ======
+    
+    /**
+     * Потратить очки движения
+     * @returns {boolean} Успешно ли потрачены очки
+     */
+    spendMovement(characterId, cost) {
+      const character = this.characters.find(c => c.id === characterId) 
+        || this.npcs.find(n => n.id === characterId)
+      
+      if (!character) return false
+      
+      // Автосоздаём структуру combat.movement если её нет
+      if (!character.combat) character.combat = {}
+      if (!character.combat.movement) {
+        character.combat.movement = { base: 5, current: 5 }
+      }
+      
+      const current = character.combat.movement.current ?? 5
+      if (current < cost) return false
+      
+      character.combat.movement.current = current - cost
+      character.updatedAt = Date.now()
+      console.log(`[Characters] spendMovement: ${character.name} потратил ${cost} ОД, осталось ${character.combat.movement.current}`)
+      return true
+    },
+    
+    /**
+     * Восстановить очки движения (новый ход)
+     */
+    resetMovement(characterId) {
+      const character = this.characters.find(c => c.id === characterId)
+        || this.npcs.find(n => n.id === characterId)
+      
+      if (!character || !character.combat?.movement) return
+      
+      character.combat.movement.current = character.combat.movement.base ?? 5
+      character.updatedAt = Date.now()
+    },
+    
+    /**
+     * Начать новый ход для всех персонажей на карте
+     * Восстанавливает очки движения и порывы
+     */
+    startNewTurn() {
+      // Восстановить движение и порывы всем персонажам
+      this.characters.forEach(char => {
+        if (char.combat?.movement) {
+          char.combat.movement.current = char.combat.movement.base ?? 5
+        }
+        if (char.combat?.surges) {
+          char.combat.surges.current = char.combat.surges.base ?? 2
+        }
+      })
+      // И всем NPC
+      this.npcs.forEach(npc => {
+        if (npc.combat?.movement) {
+          npc.combat.movement.current = npc.combat.movement.base ?? 5
+        }
+        if (npc.combat?.surges) {
+          npc.combat.surges.current = npc.combat.surges.base ?? 2
+        }
+      })
+    },
+    
+    /**
+     * Установить базовые очки движения персонажу
+     */
+    setBaseMovement(characterId, baseMovement) {
+      const character = this.characters.find(c => c.id === characterId)
+        || this.npcs.find(n => n.id === characterId)
+      
+      if (!character) return
+      
+      if (!character.combat) character.combat = {}
+      if (!character.combat.movement) character.combat.movement = { base: 5, current: 5 }
+      
+      character.combat.movement.base = baseMovement
+      character.updatedAt = Date.now()
+    },
+    
+    /**
+     * Потратить порыв на движение
+     * @returns {{ success: boolean, movementGained: number }}
+     */
+    spendSurge(characterId) {
+      const character = this.characters.find(c => c.id === characterId)
+        || this.npcs.find(n => n.id === characterId)
+      
+      if (!character) return { success: false, movementGained: 0 }
+      
+      // Автосоздаём структуру если её нет
+      if (!character.combat) character.combat = {}
+      if (!character.combat.surges) {
+        character.combat.surges = { base: 2, current: 2, movementPerSurge: 2 }
+      }
+      
+      const currentSurges = character.combat.surges.current ?? 2
+      if (currentSurges < 1) return { success: false, movementGained: 0 }
+      
+      const movementGained = character.combat.surges.movementPerSurge ?? 2
+      
+      character.combat.surges.current = currentSurges - 1
+      
+      // Добавляем очки движения
+      if (!character.combat.movement) {
+        character.combat.movement = { base: 5, current: 5 }
+      }
+      character.combat.movement.current += movementGained
+      
+      character.updatedAt = Date.now()
+      console.log(`[Characters] spendSurge: ${character.name} потратил порыв, +${movementGained} ОД`)
+      
+      return { success: true, movementGained }
     },
     
     /**
@@ -700,7 +924,9 @@ export const useCharactersStore = defineStore('characters', {
     },
     
     /**
-     * Применить полученного персонажа (для мастера - от игрока)
+     * Применить полученного персонажа (для мастера - от игрока, или для игрока - от мастера)
+     * Использует updatedAt для разрешения конфликтов
+     * Сохраняет локальные данные (skills, inventory, equipment) если они не пусты
      */
     applyReceivedCharacter(characterData) {
       if (!characterData?.id) return
@@ -708,8 +934,64 @@ export const useCharactersStore = defineStore('characters', {
       const existingIndex = this.characters.findIndex(c => c.id === characterData.id)
       
       if (existingIndex !== -1) {
-        // Обновляем существующего
-        this.characters[existingIndex] = { ...characterData }
+        const existing = this.characters[existingIndex]
+        // Обновляем только если полученные данные новее
+        if (!existing.updatedAt || !characterData.updatedAt || characterData.updatedAt >= existing.updatedAt) {
+          // Сохраняем локальные данные, если входящие пусты или undefined
+          // Это защищает от случаев, когда мастер/другой пир не имеет полных данных
+          const mergedData = { ...characterData }
+          
+          // Сохраняем skills если входящие пусты/undefined, а локальные нет
+          if ((!mergedData.skills || mergedData.skills.length === 0) && 
+              existing.skills && existing.skills.length > 0) {
+            mergedData.skills = existing.skills
+            console.log('[Characters] Сохраняем локальные skills:', existing.skills.length)
+          }
+          
+          // Сохраняем inventory если входящий пустой/undefined, а локальный нет
+          if ((!mergedData.inventory || mergedData.inventory.length === 0) && 
+              existing.inventory && existing.inventory.length > 0) {
+            mergedData.inventory = existing.inventory
+            console.log('[Characters] Сохраняем локальный inventory:', existing.inventory.length)
+          }
+          
+          // Сохраняем equipment полностью если входящий пустой/undefined/дефолтный
+          if (existing.equipment) {
+            if (!mergedData.equipment) {
+              mergedData.equipment = existing.equipment
+              console.log('[Characters] Сохраняем всё equipment')
+            } else {
+              // Проверяем weaponSets - сохраняем если входящий пустой
+              if (existing.equipment.weaponSets) {
+                const incomingHasWeapons = mergedData.equipment.weaponSets?.some(
+                  ws => ws.weapons && ws.weapons.length > 0
+                )
+                const existingHasWeapons = existing.equipment.weaponSets.some(
+                  ws => ws.weapons && ws.weapons.length > 0
+                )
+                if (!incomingHasWeapons && existingHasWeapons) {
+                  mergedData.equipment.weaponSets = existing.equipment.weaponSets
+                  console.log('[Characters] Сохраняем локальные weaponSets')
+                }
+              }
+              
+              // Сохраняем armor если входящий дефолтный ('clothes'), а локальный нет
+              if ((!mergedData.equipment.armor || mergedData.equipment.armor === 'clothes') && 
+                  existing.equipment.armor && existing.equipment.armor !== 'clothes') {
+                mergedData.equipment.armor = existing.equipment.armor
+                console.log('[Characters] Сохраняем локальную armor:', existing.equipment.armor)
+              }
+              
+              // Сохраняем activeSetIndex
+              if (mergedData.equipment.activeSetIndex === undefined && 
+                  existing.equipment.activeSetIndex !== undefined) {
+                mergedData.equipment.activeSetIndex = existing.equipment.activeSetIndex
+              }
+            }
+          }
+          
+          this.characters[existingIndex] = mergedData
+        }
       } else {
         // Добавляем нового
         this.characters.push({ ...characterData })

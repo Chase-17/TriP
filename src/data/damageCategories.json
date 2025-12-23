@@ -1,0 +1,52 @@
+{
+  "categories": {
+    "trivial": {
+      "level": 1,
+      "name": "Пустяковый",
+      "short": "П",
+      "description": "Царапина, ушиб, лёгкий порез — неприятно, но не опасно"
+    },
+    "light": {
+      "level": 2,
+      "name": "Лёгкий",
+      "short": "Л",
+      "description": "Ощутимая боль, небольшая рана — мешает, но терпимо"
+    },
+    "serious": {
+      "level": 3,
+      "name": "Серьёзный",
+      "short": "С",
+      "description": "Серьёзная травма — требует внимания и ограничивает действия"
+    },
+    "heavy": {
+      "level": 4,
+      "name": "Тяжёлый",
+      "short": "Т",
+      "description": "Тяжёлое ранение — критическое состояние, нужна срочная помощь"
+    },
+    "brutal": {
+      "level": 5,
+      "name": "Жестокий",
+      "short": "Ж",
+      "description": "Жестокое увечье — угроза жизни, потеря конечности или органа"
+    },
+    "nightmare": {
+      "level": 6,
+      "name": "Кошмарный",
+      "short": "К",
+      "description": "Кошмарные повреждения — на грани смерти"
+    },
+    "impossible": {
+      "level": 7,
+      "name": "Невыносимый",
+      "short": "Н",
+      "description": "Невыносимый урон — мгновенная смерть или полное разрушение"
+    }
+  },
+  "order": ["trivial", "light", "serious", "heavy", "brutal", "nightmare", "impossible"],
+  "metadata": {
+    "description": "Категории урона, соответствующие уровням сложности",
+    "colorSource": "levels.json",
+    "version": "1.0"
+  }
+}

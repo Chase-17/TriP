@@ -18,6 +18,14 @@
     { "id": "blocking", "name": "Блокирующая", "description": "Блокирует обзор (стена, скала)", "value": 2 }
   ],
 
+  "passability": [
+    { "id": "open", "name": "Свободно", "description": "Проходимо без ограничений" },
+    { "id": "difficult", "name": "Труднопроходимо", "description": "Замедляет движение, но проходимо" },
+    { "id": "liquid", "name": "Жидкость", "description": "Требует плавания или полёта", "requiredAbility": "swimming" },
+    { "id": "solid", "name": "Твёрдое", "description": "Непроходимо без особых способностей", "requiredAbility": "phasing" },
+    { "id": "void", "name": "Пустота", "description": "Абсолютно непроходимо" }
+  ],
+
   "terrains": [
     {
       "id": "grass",
@@ -27,6 +35,7 @@
       "color": "#4CAF50",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["природа", "базовый"]
@@ -39,6 +48,7 @@
       "color": "#7CB342",
       "image": null,
       "visibility": "partial",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["природа", "укрытие"]
@@ -51,6 +61,7 @@
       "color": "#66BB6A",
       "image": null,
       "visibility": "partial",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": 0,
       "tags": ["природа", "лес", "укрытие"]
@@ -63,6 +74,7 @@
       "color": "#2E7D32",
       "image": null,
       "visibility": "blocking",
+      "passability": "difficult",
       "movementCost": 3,
       "meleeAdvantage": -1,
       "tags": ["природа", "лес", "труднопроходимый"]
@@ -75,6 +87,7 @@
       "color": "#FFD54F",
       "image": null,
       "visibility": "open",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": -1,
       "tags": ["природа", "пустыня"]
@@ -87,6 +100,7 @@
       "color": "#FFC107",
       "image": null,
       "visibility": "partial",
+      "passability": "difficult",
       "movementCost": 3,
       "meleeAdvantage": 1,
       "tags": ["природа", "пустыня", "возвышенность"]
@@ -99,6 +113,7 @@
       "color": "#4FC3F7",
       "image": null,
       "visibility": "open",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": -1,
       "tags": ["вода"]
@@ -111,6 +126,7 @@
       "color": "#1565C0",
       "image": null,
       "visibility": "open",
+      "passability": "liquid",
       "movementCost": 4,
       "meleeAdvantage": -2,
       "tags": ["вода", "опасность"]
@@ -123,6 +139,7 @@
       "color": "#6D4C41",
       "image": null,
       "visibility": "partial",
+      "passability": "difficult",
       "movementCost": 3,
       "meleeAdvantage": -1,
       "tags": ["природа", "болото", "опасность"]
@@ -135,6 +152,7 @@
       "color": "#90A4AE",
       "image": null,
       "visibility": "partial",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": 0,
       "tags": ["природа", "горы"]
@@ -147,7 +165,8 @@
       "color": "#607D8B",
       "image": null,
       "visibility": "blocking",
-      "movementCost": 5,
+      "passability": "solid",
+      "movementCost": 1,
       "meleeAdvantage": 2,
       "tags": ["природа", "горы", "возвышенность"]
     },
@@ -159,6 +178,7 @@
       "color": "#ECEFF1",
       "image": null,
       "visibility": "open",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": -1,
       "tags": ["природа", "холод"]
@@ -171,6 +191,7 @@
       "color": "#B3E5FC",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": -2,
       "tags": ["природа", "холод", "опасность"]
@@ -183,7 +204,8 @@
       "color": "#FF5722",
       "image": null,
       "visibility": "open",
-      "movementCost": 5,
+      "passability": "liquid",
+      "movementCost": 4,
       "meleeAdvantage": -2,
       "tags": ["опасность", "огонь"]
     },
@@ -195,6 +217,7 @@
       "color": "#3E2723",
       "image": null,
       "visibility": "open",
+      "passability": "difficult",
       "movementCost": 2,
       "meleeAdvantage": 0,
       "tags": ["природа", "горы"]
@@ -207,6 +230,7 @@
       "color": "#A1887F",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["дорога"]
@@ -219,6 +243,7 @@
       "color": "#9E9E9E",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["дорога", "город"]
@@ -231,6 +256,7 @@
       "color": "#8D6E63",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["город", "здание"]
@@ -243,6 +269,7 @@
       "color": "#757575",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["город", "здание"]
@@ -255,7 +282,8 @@
       "color": "#424242",
       "image": null,
       "visibility": "blocking",
-      "movementCost": 5,
+      "passability": "solid",
+      "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["город", "здание", "преграда"]
     },
@@ -267,6 +295,7 @@
       "color": "#455A64",
       "image": null,
       "visibility": "open",
+      "passability": "open",
       "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["подземелье"]
@@ -279,7 +308,8 @@
       "color": "#263238",
       "image": null,
       "visibility": "blocking",
-      "movementCost": 5,
+      "passability": "solid",
+      "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["подземелье", "преграда"]
     },
@@ -291,7 +321,8 @@
       "color": "#0D1117",
       "image": null,
       "visibility": "blocking",
-      "movementCost": 5,
+      "passability": "void",
+      "movementCost": 1,
       "meleeAdvantage": 0,
       "tags": ["специальный"]
     }

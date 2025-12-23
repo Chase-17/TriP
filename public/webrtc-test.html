@@ -1,0 +1,96 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC ICE Test</title>
+  <style>
+    body { background: #1a1a2e; color: #eee; font-family: monospace; padding: 20px; }
+    pre { background: #16213e; padding: 15px; border-radius: 8px; overflow: auto; max-height: 400px; }
+    h1 { color: #4ecca3; }
+    .success { color: #4ecca3; }
+    .error { color: #ff6b6b; }
+    .info { color: #ffd93d; }
+  </style>
+</head>
+<body>
+  <h1>WebRTC ICE Candidates Test</h1>
+  <p>Эта страница проверяет, может ли браузер получить ICE candidates для WebRTC соединения.</p>
+  <pre id="log">Начинаю тест...
+</pre>
+  
+  <script>
+    const log = document.getElementById('log');
+    
+    function addLog(msg, type = '') {
+      const span = document.createElement('span');
+      span.className = type;
+      span.textContent = msg + '\n';
+      log.appendChild(span);
+      log.scrollTop = log.scrollHeight;
+    }
+    
+    const config = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.stunprotocol.org:3478' }
+      ]
+    };
+    
+    addLog('Конфигурация: ' + JSON.stringify(config.iceServers, null, 2), 'info');
+    addLog('');
+    
+    const pc = new RTCPeerConnection(config);
+    
+    let candidateCount = 0;
+    let hasHostCandidate = false;
+    let hasSrflxCandidate = false;
+    
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        candidateCount++;
+        const c = e.candidate;
+        const type = c.type || 'unknown';
+        
+        if (type === 'host') hasHostCandidate = true;
+        if (type === 'srflx') hasSrflxCandidate = true;
+        
+        addLog('[' + candidateCount + '] ' + type + ': ' + (c.address || c.ip) + ':' + c.port + ' (' + c.protocol + ')', 
+               type === 'srflx' ? 'success' : 'info');
+      } else {
+        addLog('');
+        addLog('=== ICE Gathering Complete ===', 'success');
+        addLog('Всего candidates: ' + candidateCount);
+        addLog('Host (локальные): ' + (hasHostCandidate ? 'ДА' : 'НЕТ'));
+        addLog('SRFLX (через STUN): ' + (hasSrflxCandidate ? 'ДА' : 'НЕТ'), hasSrflxCandidate ? 'success' : 'error');
+        
+        if (!hasSrflxCandidate) {
+          addLog('');
+          addLog('ПРОБЛЕМА: STUN серверы недоступны!', 'error');
+          addLog('WebRTC соединение между разными сетями НЕ будет работать.', 'error');
+        } else {
+          addLog('');
+          addLog('WebRTC должен работать нормально!', 'success');
+        }
+      }
+    };
+    
+    pc.onicegatheringstatechange = () => {
+      addLog('ICE Gathering State: ' + pc.iceGatheringState, 'info');
+    };
+    
+    pc.createDataChannel('test');
+    pc.createOffer()
+      .then(offer => {
+        addLog('Offer создан, устанавливаю local description...', 'info');
+        return pc.setLocalDescription(offer);
+      })
+      .then(() => {
+        addLog('Local description установлен, собираю ICE candidates...', 'info');
+        addLog('');
+      })
+      .catch(err => {
+        addLog('ОШИБКА: ' + err.message, 'error');
+      });
+  </script>
+</body>
+</html>

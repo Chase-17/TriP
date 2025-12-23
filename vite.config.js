@@ -12,5 +12,9 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
+  },
+  server: {
+    host: true, // Слушать на всех интерфейсах (0.0.0.0)
+    // Vite покажет локальный IP при запуске
   }
 })

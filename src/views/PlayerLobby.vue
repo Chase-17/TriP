@@ -5,13 +5,13 @@
  */
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/stores/user'
-import UserAvatar from '@/components/UserAvatar.vue'
+import UserAvatar from '@/components/shared/UserAvatar.vue'
+import { safeStoreToRefs, safeUseStore } from '@/utils/safeStoreRefs'
 
 const router = useRouter()
-const userStore = useUserStore()
-const { nickname, avatar } = storeToRefs(userStore)
+const userStore = safeUseStore(useUserStore, 'user')
+const { nickname = ref(''), avatar = ref(null) } = safeStoreToRefs(userStore, 'user')
 
 const roomCode = ref('')
 const isJoining = ref(false)

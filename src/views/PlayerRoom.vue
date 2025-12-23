@@ -5,34 +5,38 @@
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { storeToRefs } from 'pinia'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
 import { useCharactersStore } from '@/stores/characters'
 import { useBattleMapStore } from '@/stores/battleMap'
 import { useSceneLogStore } from '@/stores/sceneLog'
-import ChatPanel from '@/components/ChatPanel.vue'
-import CharacterSheet from '@/components/CharacterSheet.vue'
-import BattleMap from '@/components/BattleMap.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
-import SplashOverlay from '@/components/SplashOverlay.vue'
-import GameLayout from '@/components/GameLayout.vue'
-import CharacterWizard from '@/components/CharacterWizard.vue'
-import PlayerProfileSetup from '@/components/PlayerProfileSetup.vue'
+import { useTerrainStore } from '@/stores/terrain'
+import { usePointerStore } from '@/stores/pointer'
+import { findPath, getReachableHexes, reachableMapToArray, tokenAnimationManager, HexGrid } from '@/utils/hex'
+import { useTokenMovement } from '@/composables/useTokenMovement'
+import BattleMap from '@/components/battle/BattleMap.vue'
+import UserAvatar from '@/components/shared/UserAvatar.vue'
+import SplashOverlay from '@/components/layout/SplashOverlay.vue'
+import GameLayout from '@/components/layout/GameLayout.vue'
+import CharacterWizard from '@/components/character/CharacterWizard.vue'
+import PlayerProfileSetup from '@/components/layout/PlayerProfileSetup.vue'
 import { isMobileScreen, setupMobileViewport } from '@/utils/mobile'
+import { safeStoreToRefs, safeUseStore } from '@/utils/safeStoreRefs'
 
 const route = useRoute()
 const router = useRouter()
-const session = useSessionStore()
-const userStore = useUserStore()
-const charactersStore = useCharactersStore()
-const battleMapStore = useBattleMapStore()
-const sceneLogStore = useSceneLogStore()
+const session = safeUseStore(useSessionStore, 'session')
+const userStore = safeUseStore(useUserStore, 'user')
+const charactersStore = safeUseStore(useCharactersStore, 'characters')
+const battleMapStore = safeUseStore(useBattleMapStore, 'battleMap')
+const sceneLogStore = safeUseStore(useSceneLogStore, 'sceneLog')
+const terrainStore = safeUseStore(useTerrainStore, 'terrain')
+const pointerStore = safeUseStore(usePointerStore, 'pointer')
 
 
-const { roomId, status, connections } = storeToRefs(session)
-const { nickname, avatar, currentView } = storeToRefs(userStore)
-const { characters } = storeToRefs(charactersStore)
+const { roomId = ref(''), status = ref(''), connections = ref([]) } = safeStoreToRefs(session, 'session')
+const { nickname = ref(''), avatar = ref(null), currentView = ref('') } = safeStoreToRefs(userStore, 'user')
+const { characters = ref([]) } = safeStoreToRefs(charactersStore, 'characters')
 
 // Computed свойства
 const isConnected = computed(() => status.value === 'in-room' || status.value === 'ready')
@@ -105,6 +109,25 @@ const playerTokenPosition = computed(() => {
   const mapId = battleMapStore.activeMapId
   if (!mapId) return null
   return battleMapStore.findTokenPosition(mapId, playerCharacter.value.id)
+})
+
+// Активная карта
+const activeMap = computed(() => battleMapStore.activeMap)
+
+// HexGrid для конвертации координат
+const hexGrid = computed(() => {
+  if (!activeMap.value) return null
+  return new HexGrid({
+    orientation: activeMap.value.orientation || 'flat',
+    hexSize: activeMap.value.hexSize || 32
+  })
+})
+
+// Используем composable для перемещения токенов
+const { moveToken } = useTokenMovement({
+  battleMapStore,
+  terrainStore,
+  getHexGrid: () => hexGrid.value
 })
 
 // Порядок вкладок для навигации
@@ -222,14 +245,88 @@ const handleConfirmAction = () => {
   }
 }
 
+/**
+ * Функция получения данных террейна для pathfinding
+ * Учитывает способности персонажа и блокировку токенами
+ */
+const getTerrainAtFn = (character = null) => {
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return () => null
+  
+  // Собираем теги способностей персонажа
+  const characterTags = new Set()
+  if (character) {
+    // Базовые способности движения
+    const abilities = character.movementModifiers || character.abilities || {}
+    if (abilities.flight) characterTags.add('flight')
+    if (abilities.swimming) characterTags.add('swimming')
+    if (abilities.phasing) characterTags.add('phasing')
+    if (abilities.climbing) characterTags.add('climbing')
+    
+    // Дополнительные теги из персонажа
+    if (character.movementTags) {
+      character.movementTags.forEach(tag => characterTags.add(tag))
+    }
+  }
+  
+  return (q, r) => {
+    return battleMapStore.getHexPathfindingData(mapId, q, r, terrainStore, {
+      viewerId: character?.id,
+      characterTags
+    })
+  }
+}
+
+/**
+ * Обновить отображение зоны движения для персонажа
+ */
+const updateMovementRange = (character) => {
+  if (!character) {
+    pointerStore.hideMovementRange()
+    return
+  }
+  
+  const mapId = battleMapStore.activeMapId
+  if (!mapId) return
+  
+  const tokenPos = battleMapStore.findTokenPosition(mapId, character.id)
+  if (!tokenPos) return
+  
+  // Получаем доступные очки движения
+  let movementPoints = charactersStore.getAvailableMovement(character.id)
+  if (movementPoints === 0) {
+    movementPoints = character.combat?.movement?.current ?? 5
+  }
+  
+  if (movementPoints <= 0) {
+    pointerStore.hideMovementRange()
+    return
+  }
+  
+  // Вычисляем зону досягаемости с учётом способностей персонажа
+  const getTerrainAt = getTerrainAtFn(character)
+  const reachableMap = getReachableHexes(
+    { q: tokenPos.q, r: tokenPos.r },
+    movementPoints,
+    getTerrainAt,
+    { modifiers: character.movementModifiers || {} }
+  )
+  const hexes = reachableMapToArray(reachableMap)
+  
+  pointerStore.showMovementRange(
+    character.id,
+    { q: tokenPos.q, r: tokenPos.r },
+    hexes,
+    movementPoints
+  )
+}
+
 const movePlayerCharacter = (targetHex, facing = null) => {
   const character = playerCharacter.value
   if (!character) {
     console.warn('Персонаж игрока не найден')
     return
   }
-  
-  console.log(`Перемещаем персонажа ${character.name} на гекс q:${targetHex.q}, r:${targetHex.r}, facing:${facing}`)
   
   // Получаем ID активной карты
   const mapId = battleMapStore.activeMapId
@@ -238,28 +335,100 @@ const movePlayerCharacter = (targetHex, facing = null) => {
     return
   }
   
-  console.log('Активная карта:', mapId)
+  // Находим текущую позицию токена
+  const currentPos = battleMapStore.findTokenPosition(mapId, character.id)
   
-  const moved = battleMapStore.moveTokenByCharacterId(mapId, character.id, targetHex.q, targetHex.r)
-  
-  if (!moved) {
-    // Если токен не найден, размещаем его впервые
-    console.log('Токен не найден на карте, размещаем впервые')
-    const placed = battleMapStore.placeToken(mapId, character.id, targetHex.q, targetHex.r, facing || 0)
-    if (placed) {
-      console.log('Токен успешно размещен на карте')
-    } else {
-      console.warn('Не удалось разместить токен на карте. Возможно гекс занят.')
+  // Если токен уже на карте - вычисляем стоимость пути и анимируем
+  if (currentPos) {
+    // Предварительно вычисляем стоимость пути для проверки очков движения
+    const getTerrainAt = getTerrainAtFn(character)
+    const pathResult = findPath(
+      { q: currentPos.q, r: currentPos.r },
+      { q: targetHex.q, r: targetHex.r },
+      getTerrainAt,
+      { modifiers: character.movementModifiers || {} }
+    )
+    
+    if (!pathResult.found) {
+      console.warn('Путь до целевого гекса не найден')
+      return
     }
-  } else {
-    console.log('Токен перемещен на существующей карте')
-    // Если указан facing - обновляем его
-    if (facing !== null) {
-      const position = battleMapStore.findTokenPosition(mapId, character.id)
-      if (position) {
-        battleMapStore.rotateToken(mapId, position.q, position.r, facing)
+    
+    const movementCost = pathResult.totalCost
+    const availableMovement = charactersStore.getAvailableMovement(character.id)
+    
+    console.log(`Перемещение: стоимость ${movementCost}, доступно ${availableMovement}`)
+    
+    if (movementCost > availableMovement) {
+      console.warn(`Недостаточно очков движения: нужно ${movementCost}, есть ${availableMovement}`)
+      return
+    }
+    
+    // Списываем очки движения
+    const spent = charactersStore.spendMovement(character.id, movementCost)
+    if (!spent) {
+      console.warn('Не удалось списать очки движения')
+      return
+    }
+    console.log(`Потрачено ${movementCost} ОД, осталось ${charactersStore.getAvailableMovement(character.id)}`)
+    
+    const isConnectedToMaster = session.role === 'player' && session.status === 'in-room'
+    
+    // Перемещаем токен с анимацией через composable
+    const result = moveToken({
+      characterId: character.id,
+      targetHex,
+      facing,
+      pathfindingOptions: { modifiers: character.movementModifiers || {} },
+      
+      // Отправляем анимацию мастеру ПЕРЕД началом локальной анимации
+      onBeforeAnimate: ({ characterId, path, duration, facing: animFacing }) => {
+        if (isConnectedToMaster) {
+          console.log('Отправляем анимацию мастеру для синхронизации...')
+          session.broadcastTokenAnimation(characterId, path, duration, animFacing)
+        }
+      },
+      
+      // По завершении анимации
+      onComplete: ({ finalFacing, targetHex: finalHex }) => {
+        console.log('Анимация перемещения завершена')
+        
+        // Обновляем позицию в charactersStore для синхронизации
+        if (!character.combat?.position) {
+          charactersStore.placeOnMap(character.id, mapId, finalHex.q, finalHex.r)
+        } else {
+          charactersStore.moveOnMap(character.id, finalHex.q, finalHex.r)
+        }
+        
+        // Обновляем зону движения после перемещения
+        updateMovementRange(character)
+        
+        // Отправляем финальную позицию мастеру
+        if (isConnectedToMaster) {
+          console.log('Отправляем финальную позицию мастеру, facing:', finalFacing)
+          session.broadcastCharacterMove(character.id, finalHex.q, finalHex.r, finalFacing)
+        }
       }
+    })
+    
+    if (!result.success) {
+      console.warn('Ошибка перемещения:', result.error)
+      // Возвращаем потраченные очки движения при ошибке
+      // TODO: charactersStore.refundMovement(character.id, movementCost)
     }
+    
+    return // Анимация запущена, выход из функции
+  }
+  
+  // Токен не на карте - размещаем впервые (без анимации)
+  console.log(`Размещаем персонажа ${character.name} на гекс q:${targetHex.q}, r:${targetHex.r}, facing:${facing}`)
+  
+  const placed = battleMapStore.placeToken(mapId, character.id, targetHex.q, targetHex.r, facing || 0)
+  if (placed) {
+    console.log('Токен успешно размещен на карте')
+  } else {
+    console.warn('Не удалось разместить токен на карте. Возможно гекс занят.')
+    return
   }
   
   // Также обновляем позицию в charactersStore для синхронизации
@@ -268,6 +437,9 @@ const movePlayerCharacter = (targetHex, facing = null) => {
   } else {
     charactersStore.moveOnMap(character.id, targetHex.q, targetHex.r)
   }
+  
+  // Обновляем зону движения после перемещения
+  updateMovementRange(character)
   
   // Если есть сессия, отправляем обновление мастеру
   const isConnectedToMaster = session.role === 'player' && session.status === 'in-room'
@@ -342,11 +514,14 @@ const handleMoveToHex = (hex) => {
 }
 
 // Обработчик двойного тапа по гексу (перемещение)
-const handleHexDoubleTap = (hex) => {
-  if (!hex) return
+const handleHexDoubleTap = (data) => {
+  if (!data) return
   if (!isPlayerTurn.value) return
-  console.log('Двойной тап по гексу - перемещение:', hex)
-  movePlayerCharacter(hex)
+  // data теперь содержит { q, r, terrain, facing }
+  const hex = { q: data.q, r: data.r }
+  const facing = data.facing ?? null
+  console.log('Двойной тап по гексу - перемещение:', hex, 'facing:', facing)
+  movePlayerCharacter(hex, facing)
   // Сбрасываем выбранный гекс после перемещения
   selectedHex.value = null
 }

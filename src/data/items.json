@@ -114,15 +114,11 @@
       "hands": 1,
       "price": 2,
       "epoch": 2,
-      "attack": 4,
+      "attack": {"short": -2, "long": 4},
       "defence": 3,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 3 }
     },
     {
       "id": "iron_spear",
@@ -134,16 +130,11 @@
       "hands": 1,
       "price": 4,
       "epoch": 4,
-      "attack": 5,
+      "attack": {"short": -1, "long": 5},
       "defence": 3,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "4": "Точный удар",
-        "6": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 6 }
     },
     {
       "id": "steel_spear",
@@ -155,17 +146,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 6,
-      "attack": 6,
+      "attack": {"short": 0, "long": 6},
       "defence": 4,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "4": "Точный удар",
-        "6": "Тяжёлый урон",
-        "9": "Огромный урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 6, "h": 9 }
     },
     {
       "id": "iron_glaive",
@@ -177,16 +162,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 5,
-      "attack": 6,
+      "attack": {"short": 0, "long": 6},
       "defence": 2,
       "damageType": "Рубящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "3": "Тяжёлый урон",
-        "6": "Точный удар",
-        "9": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 3, "h": 9 }
     },
     {
       "id": "steel_glaive",
@@ -198,16 +178,11 @@
       "hands": 2,
       "price": 7,
       "epoch": 7,
-      "attack": 8,
+      "attack": {"short": 1, "long": 7},
       "defence": 4,
       "damageType": "Рубящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "2": "Тяжёлый урон",
-        "4": "Точный удар",
-        "8": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 2, "h": 8 }
     },
     {
       "id": "iron_halberd",
@@ -219,15 +194,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 5,
-      "attack": 4,
+      "attack": {"short": 0, "long": 4},
       "defence": 3,
       "damageType": "Рубящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "2": "Тяжёлый урон",
-        "6": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 2, "h": 6 }
     },
     {
       "id": "steel_halberd",
@@ -239,15 +210,11 @@
       "hands": 2,
       "price": 7,
       "epoch": 7,
-      "attack": 5,
+      "attack": {"short": 1, "long": 5},
       "defence": 4,
       "damageType": "Рубящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "2": "Тяжёлый урон",
-        "6": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 2, "h": 6 }
     },
     {
       "id": "simple_bow",
@@ -260,15 +227,11 @@
       "hands": 2,
       "price": 3,
       "epoch": 2,
-      "attack": 6,
+      "attack": {"long": 3, "ranged": 6},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 3 }
     },
     {
       "id": "strong_bow",
@@ -281,16 +244,11 @@
       "hands": 2,
       "price": 4,
       "epoch": 4,
-      "attack": 6,
+      "attack": {"long": 0, "ranged": 6},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар",
-        "9": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 9 }
     },
     {
       "id": "longbow",
@@ -303,16 +261,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 4,
-      "attack": 6,
+      "attack": {"long": -3, "ranged": 6},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "3": "Точный удар",
-        "6": "Тяжёлый урон",
-        "12": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 6, "h": 12 }
     },
     {
       "id": "stone_knife",
@@ -324,15 +277,11 @@
       "hands": 0.5,
       "price": 1,
       "epoch": 1,
-      "attack": 2,
+      "attack": {"short": 2, "long": -6},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "5": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 3 }
     },
     {
       "id": "knife",
@@ -344,15 +293,11 @@
       "hands": 0.5,
       "price": 2,
       "epoch": 2,
-      "attack": 2,
+      "attack": {"short": 2, "long": -4},
       "defence": 1,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "3": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 2 }
     },
     {
       "id": "steel_dagger",
@@ -364,16 +309,11 @@
       "hands": 0.5,
       "price": 5,
       "epoch": 4,
-      "attack": 3,
+      "attack": {"short": 3, "long": -4},
       "defence": 1,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "3": "Точный удар",
-        "4": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 4 }
     },
     {
       "id": "stiletto",
@@ -385,16 +325,11 @@
       "hands": 0.5,
       "price": 6,
       "epoch": 5,
-      "attack": 2,
+      "attack": {"short": 2, "long": -4},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 2,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "3": "Точный удар",
-        "6": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 6 }
     },
     {
       "id": "main_gauche",
@@ -406,16 +341,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 5,
-      "attack": 2,
+      "attack": {"short": 2, "long": -2},
       "defence": 4,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "3": "Точный удар",
-        "6": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 6 }
     },
     {
       "id": "wooden_flail",
@@ -427,14 +357,11 @@
       "hands": 1,
       "price": 1,
       "epoch": 2,
-      "attack": 6,
+      "attack": {"short": 6, "long": 4},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон"
-      }
+      "damage": { "t": 0, "l": 3 }
     },
     {
       "id": "iron_flail",
@@ -446,16 +373,11 @@
       "hands": 1,
       "price": 5,
       "epoch": 4,
-      "attack": 8,
+      "attack": {"short": 8, "long": 4},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "6": "Лёгкий урон",
-        "12": "Тяжёлый урон",
-        "15": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 6, "m": 12 }
     },
     {
       "id": "steel_flail",
@@ -467,16 +389,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 6,
-      "attack": 9,
+      "attack": {"short": 10, "long": 5},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "6": "Лёгкий урон",
-        "9": "Тяжёлый урон",
-        "12": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 6, "m": 9 }
     },
     {
       "id": "wooden_club",
@@ -488,14 +405,11 @@
       "hands": 1,
       "price": 1,
       "epoch": 1,
-      "attack": 2,
+      "attack": {"short": 2, "long": -2},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "6": "Лёгкий урон"
-      }
+      "damage": { "t": 0, "l": 6 }
     },
     {
       "id": "simple_staff",
@@ -507,14 +421,11 @@
       "hands": 2,
       "price": 1,
       "epoch": 1,
-      "attack": 2,
+      "attack": {"short": -2, "long": 4},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "6": "Лёгкий урон"
-      }
+      "damage": { "t": 0, "l": 6 }
     },
     {
       "id": "battle_staff",
@@ -526,15 +437,11 @@
       "hands": 2,
       "price": 3,
       "epoch": 3,
-      "attack": 4,
+      "attack": {"short": -2, "long": 4},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "5": "Лёгкий урон",
-        "10": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 5, "m": 10 }
     },
     {
       "id": "steel_staff",
@@ -546,15 +453,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 5,
-      "attack": 4,
+      "attack": {"short": -2, "long": 4},
       "defence": 4,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "5": "Лёгкий урон",
-        "10": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 5, "m": 10 }
     },
     {
       "id": "iron_mace",
@@ -566,15 +469,11 @@
       "hands": 1,
       "price": 5,
       "epoch": 4,
-      "attack": 4,
+      "attack": {"short": 4, "long": -2},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "6": "Тяжёлый урон",
-        "12": "Точный удар"
-      }
+      "damage": { "t": 0, "m": 6 }
     },
     {
       "id": "steel_mace",
@@ -586,16 +485,11 @@
       "hands": 1,
       "price": 7,
       "epoch": 6,
-      "attack": 5,
+      "attack": {"short": 5, "long": -1},
       "defence": 3,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "4": "Тяжёлый урон",
-        "6": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 2, "m": 4 }
     },
     {
       "id": "simple_axe",
@@ -607,15 +501,11 @@
       "hands": 1,
       "price": 2,
       "epoch": 1,
-      "attack": 4,
+      "attack": {"short": 4, "long": -2},
       "defence": 2,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "8": "Тяжёлый урон",
-        "9": "Точный удар"
-      }
+      "damage": { "t": 0, "m": 8 }
     },
     {
       "id": "battle_axe",
@@ -627,16 +517,11 @@
       "hands": 1,
       "price": 5,
       "epoch": 4,
-      "attack": 6,
+      "attack": {"short": 6, "long": 0},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар",
-        "9": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 9 }
     },
     {
       "id": "steel_axe",
@@ -648,16 +533,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 7,
-      "attack": 8,
+      "attack": {"short": 8, "long": 2},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "4": "Точный удар",
-        "6": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 6 }
     },
     {
       "id": "battle_greataxe",
@@ -669,16 +549,11 @@
       "hands": 2,
       "price": 6,
       "epoch": 5,
-      "attack": 6,
+      "attack": {"short": 0, "long": 6},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "3": "Тяжёлый урон",
-        "9": "Огромный урон",
-        "12": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 3, "h": 9 }
     },
     {
       "id": "steel_greataxe",
@@ -690,16 +565,11 @@
       "hands": 2,
       "price": 7,
       "epoch": 7,
-      "attack": 8,
+      "attack": {"short": 2, "long": 8},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "2": "Тяжёлый урон",
-        "8": "Огромный урон",
-        "10": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 2, "h": 8 }
     },
     {
       "id": "stone_hammer",
@@ -711,15 +581,11 @@
       "hands": 1,
       "price": 2,
       "epoch": 2,
-      "attack": 2,
+      "attack": {"short": 2, "long": -4},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Лёгкий урон",
-        "6": "Тяжёлый урон",
-        "12": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 6 }
     },
     {
       "id": "stone_greathammer",
@@ -731,14 +597,11 @@
       "hands": 2,
       "price": 2,
       "epoch": 2,
-      "attack": 0,
+      "attack": {"short": -4, "long": 0},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Тяжёлый урон",
-        "6": "Огромный урон"
-      }
+      "damage": { "m": 0, "h": 6 }
     },
     {
       "id": "iron_hammer",
@@ -750,15 +613,11 @@
       "hands": 1,
       "price": 3,
       "epoch": 3,
-      "attack": 3,
+      "attack": {"short": 3, "long": -1},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Лёгкий урон",
-        "5": "Тяжёлый урон",
-        "10": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 5 }
     },
     {
       "id": "iron_greathammer",
@@ -770,14 +629,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 4,
-      "attack": 0,
+      "attack": {"short": -6, "long": 0},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 1,
-      "damage": {
-        "0": "Тяжёлый урон",
-        "5": "Огромный урон"
-      }
+      "damage": { "m": 0, "h": 5 }
     },
     {
       "id": "iron_warhammer",
@@ -789,15 +645,11 @@
       "hands": 1,
       "price": 4,
       "epoch": 4,
-      "attack": 4,
+      "attack": {"short": 4, "long": -2},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 2,
-      "damage": {
-        "0": "Лёгкий урон",
-        "6": "Тяжёлый урон",
-        "12": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 6 }
     },
     {
       "id": "iron_greatwarhammer",
@@ -809,15 +661,11 @@
       "hands": 2,
       "price": 6,
       "epoch": 5,
-      "attack": 2,
+      "attack": {"short": -2, "long": 2},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 2,
-      "damage": {
-        "0": "Тяжёлый урон",
-        "6": "Огромный урон",
-        "12": "Точный удар"
-      }
+      "damage": { "m": 0, "h": 6 }
     },
     {
       "id": "steel_warhammer",
@@ -829,15 +677,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 7,
-      "attack": 5,
+      "attack": {"short": 5, "long": 1},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 2,
-      "damage": {
-        "0": "Лёгкий урон",
-        "4": "Тяжёлый урон",
-        "8": "Точный удар"
-      }
+      "damage": { "l": 0, "m": 4 }
     },
     {
       "id": "steel_greatwarhammer",
@@ -849,15 +693,11 @@
       "hands": 2,
       "price": 7,
       "epoch": 7,
-      "attack": 3,
+      "attack": {"short": -2, "long": 3},
       "defence": 2,
       "damageType": "Дробящий",
       "armorPen": 2,
-      "damage": {
-        "0": "Тяжёлый урон",
-        "4": "Огромный урон",
-        "8": "Точный удар"
-      }
+      "damage": { "m": 0, "h": 4 }
     },
     {
       "id": "wooden_buckler",
@@ -870,7 +710,7 @@
       "hands": 0.5,
       "price": 5,
       "epoch": 4,
-      "attack": 1,
+      "attack": {"short": 1},
       "defence": {
         "front": {
           "melee": 3,
@@ -893,7 +733,7 @@
       "hands": 1,
       "price": 4,
       "epoch": 3,
-      "attack": 1,
+      "attack": {"short": 1},
       "defence": {
         "front": {
           "melee": 6,
@@ -929,7 +769,7 @@
       "price": 5,
       "epoch": 3,
       "movement": -1,
-      "attack": -3,
+      "attack": {"short": -3},
       "defence": {
         "front": {
           "melee": 9,
@@ -948,7 +788,7 @@
       "hands": 0.5,
       "price": 6,
       "epoch": 6,
-      "attack": 3,
+      "attack": {"short": 3},
       "defence": {
         "front": {
           "melee": 6,
@@ -971,7 +811,7 @@
       "hands": 1,
       "price": 7,
       "epoch": 6,
-      "attack": 3,
+      "attack": {"short": 3},
       "defence": {
         "front": {
           "melee": 6,
@@ -989,7 +829,7 @@
       "hands": 1,
       "price": 5,
       "epoch": 7,
-      "attack": 1,
+      "attack": {"short": 1},
       "defence": {
         "front": {
           "melee": 9,
@@ -1024,16 +864,11 @@
       "hands": 1,
       "price": 4,
       "epoch": 3,
-      "attack": 3,
+      "attack": {"short": 3, "long": 3},
       "defence": 5,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "4": "Лёгкий урон",
-        "8": "Точный удар",
-        "12": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 4, "m": 12 }
     },
     {
       "id": "iron_sword",
@@ -1045,16 +880,11 @@
       "hands": 1,
       "price": 4,
       "epoch": 4,
-      "attack": 5,
+      "attack": {"short": 4, "long": 6},
       "defence": 5,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар",
-        "10": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 10 }
     },
     {
       "id": "iron_falchion",
@@ -1066,16 +896,11 @@
       "hands": 1,
       "price": 4,
       "epoch": 4,
-      "attack": 7,
+      "attack": {"short": 5, "long": 7}, 
       "defence": 4,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар",
-        "10": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 10 }
     },
     {
       "id": "iron_greatsword",
@@ -1087,15 +912,11 @@
       "hands": 2,
       "price": 5,
       "epoch": 4,
-      "attack": 6,
+      "attack": {"short": 2, "long": 6},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "4": "Тяжёлый урон",
-        "8": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 4, "h": 8 }
     },
     {
       "id": "steel_shortsword",
@@ -1107,16 +928,11 @@
       "hands": 1,
       "price": 6,
       "epoch": 6,
-      "attack": 4,
+      "attack": {"short": 4, "long": 4},
       "defence": 5,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Точный удар",
-        "9": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 9 }
     },
     {
       "id": "steel_sword",
@@ -1128,16 +944,11 @@
       "hands": 1,
       "price": 7,
       "epoch": 6,
-      "attack": 6,
+      "attack": {"short": 6, "long": 6},
       "defence": 6,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "4": "Точный удар",
-        "8": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 8 }
     },
     {
       "id": "steel_saber",
@@ -1149,16 +960,11 @@
       "hands": 1,
       "price": 7,
       "epoch": 7,
-      "attack": 8,
+      "attack": {"short": 2, "long": 8},
       "defence": 3,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Тяжёлый урон",
-        "8": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 3, "m": 6 }
     },
     {
       "id": "steel_scimitar",
@@ -1170,16 +976,11 @@
       "hands": 1,
       "price": 7,
       "epoch": 7,
-      "attack": 9,
+      "attack": {"short": 4, "long": 7},
       "defence": 2,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "6": "Тяжёлый урон",
-        "9": "Точный удар"
-      }
+      "damage": { "t": 0, "l": 3, "m": 6 }
     },
     {
       "id": "steel_greatsword",
@@ -1191,15 +992,11 @@
       "hands": 2,
       "price": 7,
       "epoch": 6,
-      "attack": 7,
+      "attack": {"short": 3, "long": 7},
       "defence": 4,
       "damageType": "Режущий",
       "armorPen": 0,
-      "damage": {
-        "0": "Лёгкий урон",
-        "4": "Тяжёлый урон",
-        "6": "Огромный урон"
-      }
+      "damage": { "l": 0, "m": 4, "h": 6 }
     },
     {
       "id": "rapier",
@@ -1211,16 +1008,11 @@
       "hands": 1.5,
       "price": 6,
       "epoch": 7,
-      "attack": 7,
+      "attack": {"short": 2, "long": 7},
       "defence": 3,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "2": "Лёгкий урон",
-        "6": "Точный удар",
-        "8": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 2, "m": 8 }
     },
     {
       "id": "hand_crossbow",
@@ -1232,14 +1024,11 @@
       "hands": 1.5,
       "price": 5,
       "epoch": 5,
-      "attack": 4,
+      "attack": {"short": 2, "long": 4, "ranged": 4},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "5": "Лёгкий урон"
-      }
+      "damage": { "t": 0, "l": 5 }
     },
     {
       "id": "crossbow",
@@ -1251,16 +1040,11 @@
       "hands": 2,
       "price": 6,
       "epoch": 5,
-      "attack": 6,
+      "attack": {"short": 0, "long": 6, "ranged": 6},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "4": "Лёгкий урон",
-        "6": "Точный удар",
-        "8": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 4, "m": 8 }
     },
     {
       "id": "heavy_crossbow",
@@ -1272,16 +1056,11 @@
       "hands": 2,
       "price": 6,
       "epoch": 5,
-      "attack": 8,
+      "attack": {"long": 0, "ranged": 8},
       "defence": 0,
       "damageType": "Колющий",
       "armorPen": 1,
-      "damage": {
-        "0": "Царапина",
-        "4": "Лёгкий урон",
-        "6": "Точный удар",
-        "8": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 4, "m": 8 }
     },
     {
       "id": "sling",
@@ -1294,14 +1073,11 @@
       "hands": 2,
       "price": 2,
       "epoch": 2,
-      "attack": 3,
+      "attack": {"long": 2, "ranged": 3},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон"
-      }
+      "damage": { "t": 0, "l": 3 }
     },
     {
       "id": "heavy_sling",
@@ -1314,15 +1090,11 @@
       "hands": 2,
       "price": 4,
       "epoch": 3,
-      "attack": 4,
+      "attack": {"long": 2, "ranged": 4},
       "defence": 0,
       "damageType": "Дробящий",
       "armorPen": 0,
-      "damage": {
-        "0": "Царапина",
-        "3": "Лёгкий урон",
-        "9": "Тяжёлый урон"
-      }
+      "damage": { "t": 0, "l": 3, "m": 9 }
     }
   ],
   "metadata": {

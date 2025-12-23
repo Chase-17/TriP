@@ -1,0 +1,106 @@
+{
+  "levels": [
+    {
+      "level": 1,
+      "key": "t",
+      "letter": "F",
+      "short": "П",
+      "color": "#00DDFF",
+      "lightText": false,
+      "aliases": ["trivial", "простая", "пустяковый", "пустяк"],
+      "names": {
+        "difficulty": { "ru": "Простая", "en": "Trivial" },
+        "damage": { "ru": "Пустяковый", "en": "Trivial" },
+        "defence": { "ru": "Простая", "en": "Trivial" }
+      }
+    },
+    {
+      "level": 2,
+      "key": "l",
+      "letter": "E",
+      "short": "Л",
+      "color": "#00CC44",
+      "lightText": false,
+      "aliases": ["light", "лёгкая", "лёгкий"],
+      "names": {
+        "difficulty": { "ru": "Лёгкая", "en": "Light" },
+        "damage": { "ru": "Лёгкий", "en": "Light" },
+        "defence": { "ru": "Лёгкая", "en": "Light" }
+      }
+    },
+    {
+      "level": 3,
+      "key": "m",
+      "letter": "D",
+      "short": "С",
+      "color": "#FFEE00",
+      "lightText": false,
+      "aliases": ["moderate", "средняя", "серьёзный"],
+      "names": {
+        "difficulty": { "ru": "Средняя", "en": "Moderate" },
+        "damage": { "ru": "Серьёзный", "en": "Moderate" },
+        "defence": { "ru": "Средняя", "en": "Moderate" }
+      }
+    },
+    {
+      "level": 4,
+      "key": "h",
+      "letter": "C",
+      "short": "Т",
+      "color": "#FF8800",
+      "lightText": false,
+      "aliases": ["heavy", "тяжёлая", "тяжёлый"],
+      "names": {
+        "difficulty": { "ru": "Тяжёлая", "en": "Heavy" },
+        "damage": { "ru": "Тяжёлый", "en": "Heavy" },
+        "defence": { "ru": "Тяжёлая", "en": "Heavy" }
+      }
+    },
+    {
+      "level": 5,
+      "key": "g",
+      "letter": "B",
+      "short": "Ж",
+      "color": "#CC0000",
+      "lightText": true,
+      "aliases": ["grievous", "granite", "жестокая", "жёсткая", "жестокий"],
+      "names": {
+        "difficulty": { "ru": "Жестокая", "en": "Grievous" },
+        "damage": { "ru": "Жестокий", "en": "Grievous" },
+        "defence": { "ru": "Жёсткая", "en": "Granite" }
+      }
+    },
+    {
+      "level": 6,
+      "key": "n",
+      "letter": "A",
+      "short": "К",
+      "color": "#440066",
+      "lightText": true,
+      "aliases": ["nightmare", "кошмарная", "кошмарный"],
+      "names": {
+        "difficulty": { "ru": "Кошмарная", "en": "Nightmare" },
+        "damage": { "ru": "Кошмарный", "en": "Nightmare" },
+        "defence": { "ru": "Кошмарная", "en": "Nightmare" }
+      }
+    },
+    {
+      "level": 7,
+      "key": "i",
+      "letter": "S",
+      "short": "Н",
+      "color": "#000000",
+      "lightText": true,
+      "aliases": ["impossible", "невозможная", "невыносимый"],
+      "names": {
+        "difficulty": { "ru": "Невозможная", "en": "Impossible" },
+        "damage": { "ru": "Невыносимый", "en": "Impossible" },
+        "defence": { "ru": "Невозможная", "en": "Impossible" }
+      }
+    }
+  ],
+  "metadata": {
+    "description": "Единая шкала уровней для сложностей проверок, категорий урона и защит",
+    "version": "2.0"
+  }
+}

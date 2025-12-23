@@ -5,22 +5,22 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { storeToRefs } from 'pinia'
 import { useSessionStore } from '@/stores/session'
 import { useUserStore } from '@/stores/user'
 import { useBattleMapStore } from '@/stores/battleMap'
 import { useFillProfileStore } from '@/stores/fillProfile'
-import UserAvatar from '@/components/UserAvatar.vue'
+import UserAvatar from '@/components/shared/UserAvatar.vue'
+import { safeStoreToRefs, safeUseStore } from '@/utils/safeStoreRefs'
 
 const router = useRouter()
-const session = useSessionStore()
-const userStore = useUserStore()
-const battleMapStore = useBattleMapStore()
-const fillProfileStore = useFillProfileStore()
+const session = safeUseStore(useSessionStore, 'session')
+const userStore = safeUseStore(useUserStore, 'user')
+const battleMapStore = safeUseStore(useBattleMapStore, 'battleMap')
+const fillProfileStore = safeUseStore(useFillProfileStore, 'fillProfile')
 
-const { nickname, avatar } = storeToRefs(userStore)
-const { maps } = storeToRefs(battleMapStore)
-const { profiles: fillProfiles } = storeToRefs(fillProfileStore)
+const { nickname = ref(''), avatar = ref(null) } = safeStoreToRefs(userStore, 'user')
+const { maps = ref([]) } = safeStoreToRefs(battleMapStore, 'battleMap')
+const { profiles: fillProfiles = ref([]) } = safeStoreToRefs(fillProfileStore, 'fillProfile')
 
 // Активная вкладка
 const activeTab = ref('rooms')
