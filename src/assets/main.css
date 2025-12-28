@@ -21,6 +21,30 @@ button:focus {
   outline: none;
 }
 
+/* Fix select dropdowns for dark theme */
+select,
+select option {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #334155;
+}
+
+input,
+textarea {
+  background-color: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+}
+
 body {
   margin: 0;
   min-height: 100vh;

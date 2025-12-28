@@ -15,6 +15,8 @@ const PlayerLobby = () => import('@/views/PlayerLobby.vue')
 const PlayerRoom = () => import('@/views/PlayerRoom.vue')
 const MasterPanel = () => import('@/views/MasterPanel.vue')
 const MasterRoom = () => import('@/views/MasterRoom.vue')
+const ThreeDemoPage = () => import('@/views/ThreeDemoPage.vue')
+const AssetManagerPage = () => import('@/views/AssetManagerPage.vue')
 
 const routes = [
   {
@@ -24,6 +26,24 @@ const routes = [
     meta: {
       title: 'TriP - Присоединиться',
       role: 'player'
+    }
+  },
+  {
+    path: '/three-demo',
+    name: 'three-demo',
+    component: ThreeDemoPage,
+    meta: {
+      title: 'TriP - Three.js Demo',
+      role: 'dev'
+    }
+  },
+  {
+    path: '/asset-manager',
+    name: 'asset-manager',
+    component: AssetManagerPage,
+    meta: {
+      title: 'TriP - Asset Manager',
+      role: 'dev'
     }
   },
   {

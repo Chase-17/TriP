@@ -1,0 +1,213 @@
+{
+  "categories": [
+    {
+      "id": "surface",
+      "name": "Поверхность",
+      "description": "Основной тип покрытия",
+      "required": true,
+      "tags": [
+        { "id": "water", "name": "Вода", "color": "#1E88E5" },
+        { "id": "sand", "name": "Песок", "color": "#FDD835" },
+        { "id": "grass", "name": "Трава", "color": "#4CAF50" },
+        { "id": "dirt", "name": "Земля", "color": "#795548" },
+        { "id": "stone", "name": "Камень", "color": "#78909C" },
+        { "id": "snow", "name": "Снег", "color": "#ECEFF1" },
+        { "id": "lava", "name": "Лава", "color": "#FF5722" },
+        { "id": "ice", "name": "Лёд", "color": "#B3E5FC" },
+        { "id": "mud", "name": "Грязь", "color": "#5D4037" },
+        { "id": "wood", "name": "Дерево", "color": "#8D6E63" }
+      ]
+    },
+    {
+      "id": "elevation",
+      "name": "Высота",
+      "description": "Относительная высота поверхности",
+      "required": true,
+      "tags": [
+        { "id": "submerged", "name": "Затопленный", "color": "#0D47A1" },
+        { "id": "low", "name": "Низина", "color": "#4CAF50" },
+        { "id": "flat", "name": "Равнина", "color": "#8BC34A" },
+        { "id": "elevated", "name": "Возвышенность", "color": "#FFC107" },
+        { "id": "high", "name": "Высокий", "color": "#FF9800" },
+        { "id": "cliff", "name": "Обрыв", "color": "#795548" }
+      ]
+    },
+    {
+      "id": "temperature",
+      "name": "Температура",
+      "description": "Температурный режим",
+      "required": false,
+      "tags": [
+        { "id": "frozen", "name": "Замёрзший", "color": "#B3E5FC" },
+        { "id": "cold", "name": "Холодный", "color": "#4FC3F7" },
+        { "id": "temperate", "name": "Умеренный", "color": "#81C784" },
+        { "id": "warm", "name": "Тёплый", "color": "#FFB74D" },
+        { "id": "hot", "name": "Жаркий", "color": "#FF7043" },
+        { "id": "burning", "name": "Горящий", "color": "#F44336" }
+      ]
+    },
+    {
+      "id": "moisture",
+      "name": "Влажность",
+      "description": "Уровень влажности",
+      "required": false,
+      "tags": [
+        { "id": "arid", "name": "Засушливый", "color": "#FFE082" },
+        { "id": "dry", "name": "Сухой", "color": "#FFF59D" },
+        { "id": "normal", "name": "Нормальный", "color": "#C5E1A5" },
+        { "id": "damp", "name": "Сырой", "color": "#80DEEA" },
+        { "id": "wet", "name": "Мокрый", "color": "#4DD0E1" },
+        { "id": "flooded", "name": "Затопленный", "color": "#26C6DA" }
+      ]
+    },
+    {
+      "id": "vegetation",
+      "name": "Растительность",
+      "description": "Наличие и тип растительности",
+      "required": false,
+      "tags": [
+        { "id": "barren", "name": "Пустой", "color": "#A1887F" },
+        { "id": "sparse", "name": "Редкая", "color": "#AED581" },
+        { "id": "moderate", "name": "Умеренная", "color": "#7CB342" },
+        { "id": "dense", "name": "Густая", "color": "#558B2F" },
+        { "id": "overgrown", "name": "Заросший", "color": "#33691E" }
+      ]
+    },
+    {
+      "id": "traversal",
+      "name": "Проходимость",
+      "description": "Как сложно пересечь",
+      "required": false,
+      "tags": [
+        { "id": "easy", "name": "Лёгкая", "color": "#81C784" },
+        { "id": "normal", "name": "Обычная", "color": "#FFF176" },
+        { "id": "difficult", "name": "Трудная", "color": "#FFB74D" },
+        { "id": "hazardous", "name": "Опасная", "color": "#FF8A65" },
+        { "id": "impassable", "name": "Непроходимая", "color": "#E57373" }
+      ]
+    }
+  ],
+
+  "transitionStyles": [
+    {
+      "id": "sharp",
+      "name": "Чёткая",
+      "description": "Резкая граница без переходов",
+      "defaults": {
+        "width": 2,
+        "color": "auto"
+      }
+    },
+    {
+      "id": "blend",
+      "name": "Размытие",
+      "description": "Градиентный переход между текстурами",
+      "defaults": {
+        "width": 15,
+        "offset": -5,
+        "opacity": 0.5
+      }
+    },
+    {
+      "id": "smooth-wave",
+      "name": "Плавная волна",
+      "description": "Мягкая волнистая граница (песок-вода)",
+      "defaults": {
+        "amplitude": 5,
+        "frequency": 0.1,
+        "width": 8
+      }
+    },
+    {
+      "id": "jagged",
+      "name": "Рваная",
+      "description": "Неровная контрастная граница (скала-вода)",
+      "defaults": {
+        "roughness": 0.7,
+        "segments": 8,
+        "width": 4
+      }
+    },
+    {
+      "id": "gradient",
+      "name": "Градиент",
+      "description": "Плавный цветовой переход",
+      "defaults": {
+        "width": 20,
+        "offset": -10
+      }
+    },
+    {
+      "id": "noise",
+      "name": "Шумовой",
+      "description": "Переход на основе шума (органичный)",
+      "defaults": {
+        "noiseScale": 0.1,
+        "threshold": 0.5,
+        "width": 12
+      }
+    },
+    {
+      "id": "dither",
+      "name": "Дизеринг",
+      "description": "Пиксельное смешивание (ретро-стиль)",
+      "defaults": {
+        "density": 0.5,
+        "pattern": "random"
+      }
+    }
+  ],
+
+  "defaultTransitionRules": [
+    {
+      "comment": "Вода с песком - плавная волна",
+      "level": "tag-to-tag",
+      "from": { "category": "surface", "tag": "sand" },
+      "to": { "category": "surface", "tag": "water" },
+      "effects": [
+        { "type": "subdivide", "params": { "segments": 6 } },
+        { "type": "wave", "params": { "amplitude": 6, "frequency": 0.08 } },
+        { "type": "chaikin", "params": { "iterations": 2 } }
+      ]
+    },
+    {
+      "comment": "Камень с водой - рваная граница",
+      "level": "tag-to-tag",
+      "from": { "category": "surface", "tag": "stone" },
+      "to": { "category": "surface", "tag": "water" },
+      "effects": [
+        { "type": "subdivide", "params": { "segments": 8 } },
+        { "type": "jagged", "params": { "amplitude": 8, "frequency": 0.15, "sharpness": 0.5 } }
+      ]
+    },
+    {
+      "comment": "Трава с землёй - плавный переход",
+      "level": "tag-to-tag",
+      "from": { "category": "surface", "tag": "grass" },
+      "to": { "category": "surface", "tag": "dirt" },
+      "effects": [
+        { "type": "subdivide", "params": { "segments": 6 } },
+        { "type": "noise", "params": { "amplitude": 4, "scale": 0.12 } },
+        { "type": "laplacian", "params": { "strength": 0.6, "iterations": 10 } }
+      ]
+    },
+    {
+      "comment": "Снег - шумовой переход",
+      "level": "tag-to-tag",
+      "from": { "category": "surface", "tag": "snow" },
+      "to": { "category": "surface", "tag": "*" },
+      "effects": [
+        { "type": "subdivide", "params": { "segments": 8 } },
+        { "type": "noise", "params": { "amplitude": 5, "scale": 0.15 } },
+        { "type": "chaikin", "params": { "iterations": 1 } }
+      ]
+    },
+    {
+      "comment": "Лава - резкий контраст",
+      "level": "tag-to-tag",
+      "from": { "category": "surface", "tag": "lava" },
+      "to": { "category": "surface", "tag": "*" },
+      "effects": []
+    }
+  ]
+}

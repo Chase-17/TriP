@@ -25,6 +25,8 @@ import MasterSceneTools from '../master/MasterSceneTools.vue'
 import MasterTools from '../master/MasterTools.vue'
 import MasterCharactersPanel from '../master/MasterCharactersPanel.vue'
 import SceneTemplatesList from '../master/SceneTemplatesList.vue'
+import AssetManager from '../master/AssetManager.vue'
+import ThreeAssetManager from '../threeAssetManager/ThreeAssetManager.vue'
 
 const props = defineProps({
   // Режим мастера - показывает дополнительные инструменты
@@ -156,7 +158,7 @@ onUnmounted(() => {
 // Основные экраны (порядок важен для свайпа) - разные для игрока и мастера
 const screens = computed(() => {
   if (props.isMaster) {
-    return ['battle-map', 'chat', 'master-tools', 'characters', 'character-sheet']
+    return ['battle-map', 'chat', 'master-tools', 'assets', 'three-assets', 'characters', 'character-sheet']
   }
   return ['battle-map', 'character-sheet', 'chat']
 })
@@ -203,8 +205,10 @@ const navItems = computed(() => {
     return [
       { id: 'battle-map', label: 'Карта', icon: 'mdi:map' },
       { id: 'chat', label: 'Сцена', icon: 'mdi:drama-masks' },
-      { id: 'master-tools', label: 'Инструменты', icon: 'mdi:cog' },
-      { id: 'characters', label: 'Все персонажи', icon: 'mdi:account-group' }
+      { id: 'master-tools', label: 'Настройки', icon: 'mdi:cog' },
+      { id: 'assets', label: 'Материалы', icon: 'mdi:folder-cog' },
+      { id: 'three-assets', label: '3D', icon: 'mdi:cube-outline' },
+      { id: 'characters', label: 'Персонажи', icon: 'mdi:account-group' }
     ]
   }
   return [
@@ -686,6 +690,16 @@ const selectCharacter = (charId) => {
           <!-- Экран: Инструменты мастера -->
           <div class="screen screen-master-tools" :style="{ width: `${100/screenCount}%` }">
             <MasterTools />
+          </div>
+          
+          <!-- Экран: Материалы -->
+          <div class="screen screen-assets" :style="{ width: `${100/screenCount}%` }">
+            <AssetManager />
+          </div>
+          
+          <!-- Экран: 3D Ассеты (Three.js) -->
+          <div class="screen screen-three-assets" :style="{ width: `${100/screenCount}%` }">
+            <ThreeAssetManager />
           </div>
           
           <!-- Экран: Персонажи -->

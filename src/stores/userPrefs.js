@@ -50,7 +50,47 @@ export const useUserPrefsStore = defineStore('userPrefs', {
     enableSounds: true,
     
     // Громкость (0-1)
-    soundVolume: 0.7
+    soundVolume: 0.7,
+    
+    // === AssetManager состояние ===
+    assetManager: {
+      // Режим превью: 'cluster' | 'map'
+      previewMode: 'map',
+      // Режим рендера: 'primitive' | 'live' | 'cached'
+      renderMode: 'primitive',
+      // Показывать сетку
+      showGrid: true,
+      // Активная вкладка редактора
+      editorTab: 'basic',
+      // Камера карты
+      camera: { x: 150, y: 150, zoom: 1 },
+      // Открыто ли окно редактирования
+      editorOpen: false,
+      // ID редактируемого террейна
+      editingTerrainId: null
+    },
+
+    // === Three.js Asset Manager Layout ===
+    threeAssetManager: {
+      // Ширина левой панели в процентах (20-50%)
+      leftPanelWidth: 30,
+      // Ширина правой панели в процентах (20-50%)
+      rightPanelWidth: 30,
+      // Режим отображения в 3D превью: '3d' | '2d'
+      viewMode: '2d',
+      // Камера превью
+      camera: { x: 0, z: 0, zoom: 1, phi: Math.PI / 4, theta: 0 },
+      // Активная вкладка (terrains, structures, objects, rules, profiles)
+      activeTab: 'terrains',
+      // ID выбранного элемента
+      selectedItemId: null,
+      // ID текущего шаблона карты
+      currentTemplateId: null,
+      // Режим рисования активен
+      paintMode: false,
+      // ID террейна для рисования
+      paintTerrainId: null
+    }
   }),
   
   persist: {
@@ -68,7 +108,9 @@ export const useUserPrefsStore = defineStore('userPrefs', {
       'touchControlMode',
       'confirmActions',
       'enableSounds',
-      'soundVolume'
+      'soundVolume',
+      'assetManager',
+      'threeAssetManager'
     ]
   },
   
@@ -126,6 +168,35 @@ export const useUserPrefsStore = defineStore('userPrefs', {
       this.soundVolume = 0.7
       
       releaseWakeLock()
+    },
+    
+    /**
+     * Обновить настройки AssetManager
+     */
+    updateAssetManager(updates) {
+      this.assetManager = { ...this.assetManager, ...updates }
+    },
+    
+    /**
+     * Обновить камеру AssetManager
+     */
+    updateAssetManagerCamera(camera) {
+      this.assetManager.camera = { ...this.assetManager.camera, ...camera }
+    },
+
+    /**
+     * Обновить настройки Three.js Asset Manager
+     */
+    updateThreeAssetManager(updates) {
+      this.threeAssetManager = { ...this.threeAssetManager, ...updates }
+    },
+
+    /**
+     * Обновить ширину панелей Three.js Asset Manager
+     */
+    setThreeAssetManagerPanelWidths(leftWidth, rightWidth) {
+      this.threeAssetManager.leftPanelWidth = Math.max(20, Math.min(50, leftWidth))
+      this.threeAssetManager.rightPanelWidth = Math.max(20, Math.min(50, rightWidth))
     }
   }
 })
