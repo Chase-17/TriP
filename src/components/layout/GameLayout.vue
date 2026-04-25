@@ -373,9 +373,17 @@ const infoPanelMode = computed(() => {
   return 'chat'
 })
 
-// Показывается ли инфопанель (для мастера скрывается на экране сцены)
+// Показывается ли инфопанель (скрывается для мастера на экране сцены и для three-assets)
 const showInfoPanel = computed(() => {
+  // Скрываем для three-assets (режим "только редактор")
+  if (activeScreen.value === 'three-assets') return false
   if (props.isMaster && activeScreen.value === 'chat') return false
+  return true
+})
+
+// Показывается ли панель действий (скрывается для three-assets)
+const showActionPanel = computed(() => {
+  if (activeScreen.value === 'three-assets') return false
   return true
 })
 
@@ -508,7 +516,8 @@ const selectCharacter = (charId) => {
       'mobile-layout': isMobileLayout,
       'desktop-layout': isDesktopLayout,
       'master-mode': isMaster,
-      'no-info-panel': !showInfoPanel
+      'no-info-panel': !showInfoPanel,
+      'no-action-panel': !showActionPanel
     }"
   >
     <!-- ИНФОПАНЕЛЬ (overlay) - скрыта для мастера только на экране сцены -->
@@ -722,6 +731,7 @@ const selectCharacter = (charId) => {
     
     <!-- ПАНЕЛЬ ДЕЙСТВИЙ (90px) -->
     <div 
+      v-if="showActionPanel"
       class="action-panel"
       @touchstart="onNavTouchStart"
       @touchmove="onNavTouchMove"
@@ -1007,6 +1017,11 @@ const selectCharacter = (charId) => {
 /* Когда инфопанель скрыта (для мастера на экране сцены) - меньше отступ */
 .game-layout.desktop-layout.no-info-panel .workspace {
   padding-top: 48px; /* Только навбар */
+}
+
+/* Когда нет панели действий (three-assets) - убираем нижний отступ */
+.game-layout.desktop-layout.no-action-panel .workspace {
+  padding-bottom: 0;
 }
 
 .game-layout.desktop-layout .screens-container {

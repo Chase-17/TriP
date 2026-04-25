@@ -206,33 +206,50 @@ export const LINE_EFFECTS = {
   },
   wave: {
     name: 'Волна',
-    description: 'Плавные волны (Perlin noise)',
-    icon: '〰️',
-    defaults: { amplitude: 0.08, frequency: 3.0, seed: 0 },
+    description: 'Шумовые волны вдоль линии',
+    icon: '∿',
+    defaults: { 
+      amplitude: 0.15,      // max displacement
+      scale: 0.3,           // noise spatial scale
+      frequency: 4.0,       // wave frequency along line
+      sharpness: 0,         // 0 = smooth waves, 1 = sharp peaks
+      maxInward: 0.5,       // max displacement inward (0 = unlimited)
+      maxOutward: 0.5,      // max displacement outward (0 = unlimited)
+      seed: 0,
+      noiseType: 'perlin',  // perlin | simplex | voronoi
+      octaves: 1,           // FBM octaves (1 = simple noise)
+      persistence: 0.5,     // FBM amplitude decay
+      lacunarity: 2.0,      // FBM frequency growth
+    },
   },
   noise: {
     name: 'Шум',
-    description: 'Хаотичные смещения',
-    icon: '📊',
-    defaults: { amplitude: 0.05, scale: 0.15 },
-  },
-  jagged: {
-    name: 'Рваная',
-    description: 'Резкие угловатые деформации',
-    icon: '⚡',
-    defaults: { amplitude: 0.1, sharpness: 0.4 },
+    description: 'Хаотичные смещения по X и Z',
+    icon: '░',
+    defaults: { 
+      amplitude: 0.08, 
+      scale: 0.2, 
+      sharpness: 0,         // 0 = smooth, 1 = sharp
+      maxInward: 0.3,       // max displacement inward
+      maxOutward: 0.3,      // max displacement outward
+      seed: 0,
+      noiseType: 'perlin',
+      octaves: 1,
+      persistence: 0.5,
+      lacunarity: 2.0,
+    },
   },
   sine: {
     name: 'Синусоида',
     description: 'Регулярная волна',
     icon: '∿',
-    defaults: { amplitude: 0.06, wavelength: 0.3 },
+    defaults: { amplitude: 0.1, wavelength: 0.4, phase: 0 },
   },
   zigzag: {
     name: 'Зигзаг',
     description: 'Острые углы туда-сюда',
-    icon: '⚡',
-    defaults: { amplitude: 0.08, wavelength: 0.2 },
+    icon: '⋀',
+    defaults: { amplitude: 0.12, wavelength: 0.3, phase: 0 },
   },
   straighten: {
     name: 'Спрямление',
@@ -270,31 +287,38 @@ export const MASK_EFFECTS = {
   },
 }
 
+// Noise types for line effects
+export const NOISE_TYPES = {
+  perlin: { name: 'Perlin', description: 'Классический плавный шум', icon: '≋' },
+  simplex: { name: 'Simplex', description: 'Более равномерный шум', icon: '◇' },
+  voronoi: { name: 'Voronoi', description: 'Ячеистый шум', icon: '⬡' },
+}
+
 // Draw Effects - visual decorations
 export const DRAW_EFFECTS = {
   shadow: {
     name: 'Тень',
     description: 'Отбрасываемая тень',
     icon: '◢',
-    defaults: { width: 0.05, opacity: 0.3, offsetX: 0.02, offsetY: 0.02 },
+    defaults: { width: 0.06, opacity: 0.4, offset: 0.02 },
   },
   glow: {
     name: 'Свечение',
     description: 'Мягкое свечение вдоль границы',
     icon: '✧',
-    defaults: { width: 0.08, color: '#ffffff', intensity: 0.5 },
+    defaults: { width: 0.1, color: '#ffcc66', opacity: 0.5 },
   },
   stroke: {
     name: 'Обводка',
     description: 'Линия обводки',
     icon: '▬',
-    defaults: { width: 0.02, color: '#000000', opacity: 0.7 },
+    defaults: { width: 0.03, color: '#3d2817', opacity: 0.8 },
   },
   highlight: {
     name: 'Блик',
     description: 'Светлая подсветка края',
     icon: '╱',
-    defaults: { width: 0.03, color: '#ffffff', opacity: 0.4, offset: -0.01 },
+    defaults: { width: 0.04, color: '#ffffff', opacity: 0.5, offset: -0.01 },
   },
 }
 

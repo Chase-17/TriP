@@ -58,7 +58,7 @@
     
     <!-- Подсказка -->
     <div class="preview-hint">
-      ЛКМ: выбор • ПКМ: вращение • Колёсико: масштаб • СКМ: панорама
+      ЛКМ: выбор • ПКМ: вращение • Колёсико: масштаб • СКМ: панорама • Ctrl+Shift+D: debug
     </div>
   </div>
 </template>
@@ -67,6 +67,8 @@
 import { ref, onMounted, onUnmounted, watch, shallowRef } from 'vue'
 import * as THREE from 'three'
 import { usePatchBoundaries, edgesToPolyline, smoothPolylineOpen, straightenPolylineOpen } from '@/composables/usePatchBoundaries'
+import { useSegmentTextures } from '@/composables/useSegmentTextures'
+import { useGlobalDebug } from '@/composables/useGlobalDebug'
 
 const props = defineProps({
   terrain: {
@@ -105,6 +107,11 @@ const canvasRef = ref(null)
 const hoveredHex = ref(null)
 const viewMode = ref('2d') // '3d' | '2d' - по умолчанию ортогональная камера
 
+// Global debug system
+const globalDebug = useGlobalDebug()
+let debugHighlightMesh = null
+let debugNormalsMesh = null
+
 // Map state - stores terrain for each hex
 const hexMapState = ref(new Map()) // key: "q,r" -> terrainId
 
@@ -142,6 +149,9 @@ const PATCH_SDF_SIZE = 256  // SDF texture size for patch boundaries (256 for fa
 
 // Patch boundaries system (CPU-side computation)
 const patchBoundaries = usePatchBoundaries()
+
+// Segment textures for GPU-based SDF (new system)
+const segmentTextures = useSegmentTextures()
 
 // Debounce timer for patch SDF updates
 let patchSDFUpdateTimer = null
@@ -477,6 +487,105 @@ function resetCamera() {
   }
   
   updateCameraPosition()
+}
+
+// Debug panel handlers
+function onHighlightSegment(segment) {
+  // Remove old highlight
+  if (debugHighlightMesh) {
+    scene.remove(debugHighlightMesh)
+    debugHighlightMesh.geometry?.dispose()
+    debugHighlightMesh.material?.dispose()
+    debugHighlightMesh = null
+  }
+  
+  if (!segment?.points || segment.points.length < 2) return
+  
+  // Create line geometry for the segment
+  const points = segment.points.map(p => new THREE.Vector3(p.x, 0.5, p.z))
+  const geometry = new THREE.BufferGeometry().setFromPoints(points)
+  const material = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 3 })
+  debugHighlightMesh = new THREE.Line(geometry, material)
+  scene.add(debugHighlightMesh)
+}
+
+function onHighlightFragment(data) {
+  // Remove old highlights
+  if (debugNormalsMesh) {
+    scene.remove(debugNormalsMesh)
+    debugNormalsMesh.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose()
+      if (obj.material) obj.material.dispose()
+    })
+    debugNormalsMesh = null
+  }
+  
+  if (!data?.fragment) return
+  
+  const group = new THREE.Group()
+  const { p0, p1, storedNormal, leftPerp, nearestEdge } = data.fragment
+  
+  // Fragment line (yellow)
+  const fragPoints = [
+    new THREE.Vector3(p0.x, 0.55, p0.z),
+    new THREE.Vector3(p1.x, 0.55, p1.z)
+  ]
+  const fragGeom = new THREE.BufferGeometry().setFromPoints(fragPoints)
+  const fragMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 })
+  group.add(new THREE.Line(fragGeom, fragMat))
+  
+  // Fragment midpoint
+  const mid = data.fragment.mid
+  
+  if (data.showNormals) {
+    // Stored normal (green = correct direction toward patchRight)
+    const normalLen = 0.3
+    const normalEnd = {
+      x: mid.x + storedNormal.x * normalLen,
+      z: mid.z + storedNormal.z * normalLen
+    }
+    const normalPoints = [
+      new THREE.Vector3(mid.x, 0.6, mid.z),
+      new THREE.Vector3(normalEnd.x, 0.6, normalEnd.z)
+    ]
+    const normalGeom = new THREE.BufferGeometry().setFromPoints(normalPoints)
+    const normalMat = new THREE.LineBasicMaterial({ color: 0x00ff00 })
+    group.add(new THREE.Line(normalGeom, normalMat))
+    
+    // Left perpendicular (blue = raw, before flip decision)
+    const leftEnd = {
+      x: mid.x + leftPerp.x * normalLen * 0.8,
+      z: mid.z + leftPerp.z * normalLen * 0.8
+    }
+    const leftPoints = [
+      new THREE.Vector3(mid.x, 0.58, mid.z),
+      new THREE.Vector3(leftEnd.x, 0.58, leftEnd.z)
+    ]
+    const leftGeom = new THREE.BufferGeometry().setFromPoints(leftPoints)
+    const leftMat = new THREE.LineBasicMaterial({ color: 0x0088ff })
+    group.add(new THREE.Line(leftGeom, leftMat))
+  }
+  
+  if (data.showHexCenters && nearestEdge?.hexCenter) {
+    // Line from fragment mid to hex center (cyan)
+    const hexPoints = [
+      new THREE.Vector3(mid.x, 0.5, mid.z),
+      new THREE.Vector3(nearestEdge.hexCenter.x, 0.5, nearestEdge.hexCenter.z)
+    ]
+    const hexGeom = new THREE.BufferGeometry().setFromPoints(hexPoints)
+    const hexMat = new THREE.LineBasicMaterial({ color: 0x00ffff })
+    group.add(new THREE.Line(hexGeom, hexMat))
+    
+    // Hex center marker (sphere)
+    const sphereGeom = new THREE.SphereGeometry(0.05, 8, 8)
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ffff })
+    const sphere = new THREE.Mesh(sphereGeom, sphereMat)
+    sphere.position.set(nearestEdge.hexCenter.x, 0.5, nearestEdge.hexCenter.z)
+    group.add(sphere)
+  }
+  
+  debugNormalsMesh = group
+  scene.add(debugNormalsMesh)
 }
 
 // Zoom functions
@@ -867,6 +976,16 @@ function createTerrainShaderMaterial() {
       uLayerDataWidth: { value: LAYER_DATA_WIDTH },
       uMaxRules: { value: MAX_RULES },
       uRuleDataWidth: { value: RULE_DATA_WIDTH },
+      // Segment textures for GPU-based SDF (new system)
+      uSegmentMeta: { value: null },
+      uSegmentPoints: { value: null },
+      uSegmentNormals: { value: null },  // Fragment normals for correct SDF sign
+      uHexSegments: { value: null },
+      uPatchTerrains: { value: null },
+      uSegmentCount: { value: 0 },
+      uMaxPoints: { value: 4096 },
+      uMaxHexRadius: { value: 64 },
+      uHexSize: { value: 1.0 },
     },
     vertexShader: /* glsl */ `
       attribute vec3 color;
@@ -908,6 +1027,16 @@ function createTerrainShaderMaterial() {
       uniform float uLayerDataWidth;
       uniform float uMaxRules;
       uniform float uRuleDataWidth;
+      // Segment textures for GPU-based SDF
+      uniform sampler2D uSegmentMeta;
+      uniform sampler2D uSegmentPoints;
+      uniform sampler2D uSegmentNormals;  // Outward normals for each fragment
+      uniform sampler2D uHexSegments;
+      uniform sampler2D uPatchTerrains;
+      uniform float uSegmentCount;
+      uniform float uMaxPoints;
+      uniform float uMaxHexRadius;
+      uniform float uHexSize;
       
       varying vec3 vColor;
       varying vec3 vNormal;
@@ -1788,6 +1917,254 @@ function createTerrainShaderMaterial() {
         return resultColor;
       }
       
+      // ============================================
+      // GPU-based Segment SDF Functions
+      // ============================================
+      
+      // Distance from point to line segment
+      float distanceToLineSegment(vec2 p, vec2 a, vec2 b) {
+        vec2 ab = b - a;
+        float len2 = dot(ab, ab);
+        if (len2 < 0.0001) return length(p - a); // Degenerate segment
+        float t = clamp(dot(p - a, ab) / len2, 0.0, 1.0);
+        vec2 proj = a + t * ab;
+        return length(p - proj);
+      }
+      
+      // Read a point from the segment points texture
+      // Points are packed: each pixel contains 2 points [x1, z1, x2, z2]
+      vec2 readSegmentPoint(int pointIndex) {
+        // pointIndex is global index in the points array
+        int pixelIdx = pointIndex / 2;  // Which pixel
+        int channel = (pointIndex % 2) * 2;  // 0 or 2 (starting channel)
+        
+        float texWidth = uMaxPoints / 2.0;  // Texture width is MAX_POINTS/2
+        float u = (float(pixelIdx) + 0.5) / texWidth;
+        vec4 pixel = texture2D(uSegmentPoints, vec2(u, 0.5));
+        
+        if (channel == 0) {
+          return vec2(pixel.r, pixel.g);
+        } else {
+          return vec2(pixel.b, pixel.a);
+        }
+      }
+      
+      // Read a fragment normal from the segment normals texture
+      // Normals are stored with same indexing as points
+      // Normal at globalIndex i corresponds to fragment from point i to point i+1
+      // fragmentIndex: which fragment (0-based) within this segment
+      vec2 readSegmentNormal(int segmentPointStart, int fragmentIndex) {
+        // Normal for fragment i is stored at the same position as point i
+        int normalIndex = segmentPointStart + fragmentIndex;
+        int pixelIdx = normalIndex / 2;
+        int channel = (normalIndex % 2) * 2;
+        
+        float texWidth = uMaxPoints / 2.0;
+        float u = (float(pixelIdx) + 0.5) / texWidth;
+        vec4 pixel = texture2D(uSegmentNormals, vec2(u, 0.5));
+        
+        if (channel == 0) {
+          return vec2(pixel.r, pixel.g);
+        } else {
+          return vec2(pixel.b, pixel.a);
+        }
+      }
+      
+      // Compute distance to a polyline segment (multiple points)
+      float distanceToPolyline(vec2 p, int startIdx, int pointCount) {
+        if (pointCount < 2) return 999.0;
+        
+        float minDist = 999.0;
+        
+        // Get first point
+        vec2 prevPt = readSegmentPoint(startIdx);
+        
+        // Iterate through remaining points
+        for (int i = 1; i < 256; i++) {
+          if (i >= pointCount) break;
+          
+          vec2 currPt = readSegmentPoint(startIdx + i);
+          
+          float d = distanceToLineSegment(p, prevPt, currPt);
+          minDist = min(minDist, d);
+          prevPt = currPt;
+        }
+        
+        return minDist;
+      }
+      
+      // Compute SIGNED distance to polyline (positive = outward from left patch, negative = inward)
+      // Uses pre-computed fragment normals from CPU that have been oriented consistently
+      // via propagation along the polyline. This handles curves correctly.
+      float signedDistanceToPolyline(vec2 p, int startIdx, int pointCount) {
+        if (pointCount < 2) return 999.0;
+        
+        float minDist = 999.0;
+        int closestSegIdx = 0;
+        
+        vec2 prevPt = readSegmentPoint(startIdx);
+        
+        // Find closest fragment
+        for (int i = 1; i < 256; i++) {
+          if (i >= pointCount) break;
+          
+          vec2 currPt = readSegmentPoint(startIdx + i);
+          
+          float d = distanceToLineSegment(p, prevPt, currPt);
+          if (d < minDist) {
+            minDist = d;
+            closestSegIdx = i - 1;  // Fragment index (0-based)
+          }
+          prevPt = currPt;
+        }
+        
+        // Read the pre-computed normal for the closest fragment
+        // These normals were oriented via propagation on CPU
+        vec2 normal = readSegmentNormal(startIdx, closestSegIdx);
+        float normalLen = length(normal);
+        
+        if (normalLen < 0.0001) {
+          // Fallback: compute perpendicular locally
+          vec2 a = readSegmentPoint(startIdx + closestSegIdx);
+          vec2 b = readSegmentPoint(startIdx + closestSegIdx + 1);
+          vec2 edge = b - a;
+          normal = vec2(-edge.y, edge.x);
+          normalLen = length(normal);
+          if (normalLen < 0.0001) return minDist;
+        }
+        normal /= normalLen;
+        
+        // Find closest point on the fragment
+        vec2 a = readSegmentPoint(startIdx + closestSegIdx);
+        vec2 b = readSegmentPoint(startIdx + closestSegIdx + 1);
+        vec2 closestPt;
+        {
+          vec2 ab = b - a;
+          float len2 = dot(ab, ab);
+          float t = len2 > 0.0001 ? clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
+          closestPt = a + t * ab;
+        }
+        
+        // Vector from closest point on polyline to p
+        vec2 toP = p - closestPt;
+        
+        // Determine sign by projecting onto the fragment normal
+        float side = dot(toP, normal);
+        
+        return side >= 0.0 ? minDist : -minDist;
+      }
+      
+      // Structure for GPU SDF sample result
+      struct GPUSDFSample {
+        float distance;       // Unsigned distance to nearest segment
+        float signedDistance; // Signed distance (negative inside patch)
+        int patchLeft;        // Patch ID on left side of segment
+        int patchRight;       // Patch ID on right side of segment
+        int terrainLeft;      // Terrain ID on left
+        int terrainRight;     // Terrain ID on right
+        bool valid;           // Valid sample found
+      };
+      
+      // Convert hex axial coordinates to world position
+      // Convert hex axial coordinates to world position
+      // Must match JS: x = HEX_SIZE * sqrt(3) * (q + r/2), z = HEX_SIZE * 1.5 * r
+      vec2 hexAxialToWorld(float q, float r) {
+        float x = uHexSize * sqrt(3.0) * (q + r * 0.5);
+        float z = uHexSize * 1.5 * r;
+        return vec2(x, z);
+      }
+      
+      // Convert world position to hex axial coordinates
+      // Inverse of hexAxialToWorld
+      vec2 worldToHexAxial(vec2 worldPos) {
+        // From: x = HEX_SIZE * sqrt(3) * (q + r/2), z = HEX_SIZE * 1.5 * r
+        // Solve for r: r = z / (HEX_SIZE * 1.5)
+        // Solve for q: q = x / (HEX_SIZE * sqrt(3)) - r/2
+        float r = worldPos.y / (uHexSize * 1.5);
+        float q = worldPos.x / (uHexSize * sqrt(3.0)) - r * 0.5;
+        return vec2(q, r);
+      }
+      
+      // Sample GPU segment SDF for a world position
+      // NEW: Iterates through ALL segments, not just hex-bound ones
+      // This correctly handles deformed polylines that extend beyond original hex boundaries
+      GPUSDFSample sampleGPUSegmentSDF(vec2 worldPos) {
+        GPUSDFSample result;
+        result.valid = false;
+        result.distance = 999.0;
+        result.signedDistance = 999.0;
+        result.patchLeft = -1;
+        result.patchRight = -1;
+        result.terrainLeft = -1;
+        result.terrainRight = -1;
+        
+        // Early exit if no segments
+        if (uSegmentCount < 0.5) {
+          return result;
+        }
+        
+        float minDist = 999.0;
+        float minSignedDist = 999.0;
+        int nearestSeg = -1;
+        int nearestPatchLeft = -1;
+        int nearestPatchRight = -1;
+        
+        float metaTexWidth = 256.0;  // MAX_SEGMENTS = 256
+        
+        // Iterate through ALL segments
+        for (int segId = 0; segId < 256; segId++) {
+          if (float(segId) >= uSegmentCount) break;
+          
+          // Read segment metadata: [patchLeft, patchRight, pointStart, pointCount]
+          float metaU = (float(segId) + 0.5) / metaTexWidth;
+          vec4 meta = texture2D(uSegmentMeta, vec2(metaU, 0.5));
+          
+          int pointStart = int(meta.b);
+          int pointCount = int(meta.a);
+          
+          if (pointCount < 2) continue;
+          
+          // Quick bounding box check for early rejection (optional optimization)
+          // Skip for now - full SDF check
+          
+          // Compute signed distance to this segment's polyline
+          float sd = signedDistanceToPolyline(worldPos, pointStart, pointCount);
+          float d = abs(sd);
+          
+          if (d < minDist) {
+            minDist = d;
+            minSignedDist = sd;
+            nearestSeg = segId;
+            nearestPatchLeft = int(meta.r);
+            nearestPatchRight = int(meta.g);
+          }
+        }
+        
+        if (nearestSeg >= 0) {
+          result.distance = minDist;
+          result.signedDistance = minSignedDist;
+          result.patchLeft = nearestPatchLeft;
+          result.patchRight = nearestPatchRight;
+          result.valid = true;
+          
+          // Get terrain IDs from patch IDs
+          if (result.patchLeft >= 0) {
+            float patchU = (float(result.patchLeft) + 0.5) / 64.0;  // MAX_PATCHES = 64
+            result.terrainLeft = int(texture2D(uPatchTerrains, vec2(patchU, 0.5)).r);
+          }
+          if (result.patchRight >= 0) {
+            float patchU = (float(result.patchRight) + 0.5) / 64.0;
+            result.terrainRight = int(texture2D(uPatchTerrains, vec2(patchU, 0.5)).r);
+          }
+        }
+        
+        return result;
+      }
+      
+      // ============================================
+      // End GPU Segment SDF Functions  
+      // ============================================
+      
       // CPU SDF sample result structure
       struct SDFSample {
         float distance;      // Signed distance to boundary
@@ -1882,6 +2259,7 @@ function createTerrainShaderMaterial() {
         float drawOffset;
         float drawBlur;
         float drawOpacity;
+        vec3 drawColor;
       };
       
       // Find matching rule for terrain pair
@@ -1902,6 +2280,7 @@ function createTerrainShaderMaterial() {
         rule.drawOffset = 0.0;
         rule.drawBlur = 0.0;
         rule.drawOpacity = 0.0;
+        rule.drawColor = vec3(0.24, 0.15, 0.09);  // Default dark brown
         
         float bestPriority = -1.0;
         
@@ -1961,7 +2340,7 @@ function createTerrainShaderMaterial() {
             rule.maskType = int(maskInfo.r * 10.0);
             rule.maskWidth = maskInfo.g;
             rule.maskFalloff = maskInfo.b;
-            rule.maskNoiseScale = maskInfo.a * 20.0;
+            rule.maskNoiseScale = maskInfo.a;  // direct value, no scaling
             
             // Read draw effect (pixel 4)
             vec4 drawInfo = texture2D(uTransitionRules, vec2(4.5 / uRuleDataWidth, ruleY));
@@ -1969,6 +2348,10 @@ function createTerrainShaderMaterial() {
             rule.drawOffset = drawInfo.g;
             rule.drawBlur = drawInfo.b;
             rule.drawOpacity = drawInfo.a;
+            
+            // Read draw color (pixel 5)
+            vec4 drawColorInfo = texture2D(uTransitionRules, vec2(5.5 / uRuleDataWidth, ruleY));
+            rule.drawColor = drawColorInfo.rgb;
           }
         }
         
@@ -2002,9 +2385,9 @@ function createTerrainShaderMaterial() {
         float patchDist = patchSDF.x;  // Signed distance to patch boundary
         float nearestDiffTerrain = patchSDF.y;
         
-        // Get CPU-computed SDF for smooth/straightened boundaries FIRST
-        // We need this to decide whether to apply any effects
-        SDFSample cpuSDFSample = samplePatchSDFWithInfo(vWorldXZ);
+        // Get GPU-computed SDF for smooth/straightened boundaries
+        // This uses polyline segments with applied effects
+        GPUSDFSample gpuSDFSample = sampleGPUSegmentSDF(vWorldXZ);
         
         // Only process if we have a neighbor with different terrain
         if (nearestDiffTerrain >= 0.0) {
@@ -2013,8 +2396,8 @@ function createTerrainShaderMaterial() {
           
           // Skip transition effects if:
           // 1. No rule found, OR
-          // 2. CPU SDF is not valid for this pixel (outside transition zone)
-          if (!rule.found || !cpuSDFSample.valid) {
+          // 2. GPU SDF is not valid for this pixel (no segments nearby)
+          if (!rule.found || !gpuSDFSample.valid) {
             // No transition effects - just render terrain as-is
           } else {
           
@@ -2029,73 +2412,55 @@ function createTerrainShaderMaterial() {
           }
           if (minEdgeDist > 100.0) minEdgeDist = patchDist;
           
-          // CPU SDF was already sampled above (before rule check)
-          // Check if current terrain is one of the pair (from or to)
-          bool cpuSDFMatches = cpuSDFSample.valid && (
-            abs(cpuSDFSample.fromTerrainId - terrainId) < 0.5 ||
-            abs(cpuSDFSample.toTerrainId - terrainId) < 0.5
+          // GPU SDF was already sampled above (before rule check)
+          // Check if current terrain is one of the pair (terrainLeft or terrainRight)
+          bool gpuSDFMatches = gpuSDFSample.valid && (
+            gpuSDFSample.terrainLeft == int(terrainId) ||
+            gpuSDFSample.terrainRight == int(terrainId)
           );
           
-          float cpuSDF = cpuSDFMatches ? cpuSDFSample.distance : 999.0;
+          // signedDistance: positive = right side (patchRight), negative = left side (patchLeft)
+          // We need to flip sign based on which side the current terrain is on
+          float gpuSDF = gpuSDFMatches ? gpuSDFSample.signedDistance : 999.0;
           
-          // If our terrain is the "to" side, we're on the other side of the boundary - flip sign
-          if (cpuSDFMatches && abs(cpuSDFSample.toTerrainId - terrainId) < 0.5) {
-            cpuSDF = -cpuSDF;
+          // If our terrain is on the RIGHT side, flip sign so positive = inside current terrain
+          if (gpuSDFMatches && gpuSDFSample.terrainRight == int(terrainId)) {
+            gpuSDF = -gpuSDF;
           }
           
-          // Determine the neighbor terrain from CPU SDF (for blending and rule lookup)
-          float cpuNeighborTerrain = -1.0;
-          if (cpuSDFMatches) {
-            if (abs(cpuSDFSample.fromTerrainId - terrainId) < 0.5) {
-              cpuNeighborTerrain = cpuSDFSample.toTerrainId;
+          // Determine the neighbor terrain from GPU SDF
+          float gpuNeighborTerrain = -1.0;
+          if (gpuSDFMatches) {
+            if (gpuSDFSample.terrainLeft == int(terrainId)) {
+              gpuNeighborTerrain = float(gpuSDFSample.terrainRight);
             } else {
-              cpuNeighborTerrain = cpuSDFSample.fromTerrainId;
+              gpuNeighborTerrain = float(gpuSDFSample.terrainLeft);
             }
           }
           
-          // Use CPU neighbor if available, otherwise fall back to GPU-computed neighbor
+          // Use GPU neighbor if available, otherwise fall back to patch-computed neighbor
           float effectiveNeighbor = nearestDiffTerrain;
-          if (cpuSDFMatches) {
-            effectiveNeighbor = cpuNeighborTerrain;
+          if (gpuSDFMatches) {
+            effectiveNeighbor = gpuNeighborTerrain;
           }
           
           // Find transition rule based on effective neighbor
           TransitionRule effectiveRule = rule;
-          if (cpuSDFMatches) {
+          if (gpuSDFMatches) {
             effectiveRule = findTransitionRule(terrainId, effectiveNeighbor);
           }
           
-          // Blend between hex-edge SDF and CPU patch SDF based on smoothAmount
-          // smoothAmount: 0 = sharp hex edges, 1 = smooth CPU-computed patch SDF
-          // Use CPU SDF when available and matching, otherwise fall back to GPU patchDist
-          float smoothSDF = cpuSDF < 100.0 ? cpuSDF : patchDist;
+          // Use effective rule for all mask/draw calculations
+          rule = effectiveRule;
+          
+          // Blend between hex-edge SDF and GPU segment SDF based on smoothAmount
+          // smoothAmount: 0 = sharp hex edges, 1 = smooth GPU-computed segment SDF
+          float smoothSDF = gpuSDF < 100.0 ? gpuSDF : patchDist;
           float baseDist = mix(minEdgeDist, smoothSDF, rule.smoothAmount);
           
-          // Apply line deformation using WORLD coordinates for continuity along patch boundary
+          // Line deformation effects are now applied on CPU to the polyline
+          // No GPU deformation needed
           float deformedDist = baseDist;
-          if (rule.lineEffectType >= 1 && rule.lineEffectType <= 6) {
-            // Wave, noise, jagged, sine, zigzag effects
-            // Use world position projected onto boundary direction for continuous deformation
-            float boundaryCoord = length(vWorldXZ) * rule.lineFrequency + rule.linePhase;
-            float deform = 0.0;
-            
-            if (rule.lineEffectType == 1 || rule.lineEffectType == 2) {
-              // Wave/Noise - use perlin noise at world coords for continuous variation
-              deform = (perlinNoise(vWorldXZ * rule.lineFrequency) * 2.0 - 1.0) * rule.lineAmplitude;
-            } else if (rule.lineEffectType == 3) {
-              // Jagged - sharp but continuous along world space
-              vec2 cellCoord = floor(vWorldXZ * rule.lineFrequency);
-              deform = (hash(cellCoord) * 2.0 - 1.0) * rule.lineAmplitude;
-            } else if (rule.lineEffectType == 4 || rule.lineEffectType == 5) {
-              // Sine - smooth wave along boundary
-              deform = sin(boundaryCoord * 3.0) * rule.lineAmplitude;
-            } else if (rule.lineEffectType == 6) {
-              // Zigzag - triangle wave
-              deform = (abs(fract(boundaryCoord * 0.5) * 2.0 - 1.0) * 2.0 - 1.0) * rule.lineAmplitude;
-            }
-            
-            deformedDist = baseDist + deform;
-          }
           
           // Calculate blend based on mask type
           // blend = 0: 100% current terrain, blend = 1: 100% neighbor terrain
@@ -2105,60 +2470,75 @@ function createTerrainShaderMaterial() {
           float blend = 0.0;
           float maskWidth = rule.maskWidth;
           
-          // If smooth/straighten is enabled but no mask effect, use default blend based on CPU SDF
-          // This allows smooth boundaries to work without requiring a mask effect
-          if (rule.maskType == 0 && rule.smoothAmount > 0.5) {
-            // Use CPU SDF distance for smooth blend with default width
-            float defaultWidth = 0.3;  // Default blend width for smooth/straighten
-            // Symmetric blend: -width -> 1.0, 0 -> 0.5, +width -> 0.0
-            blend = 1.0 - smoothstep(-defaultWidth, defaultWidth, deformedDist);
-          } else if (rule.maskType == 0) {
-            // None - no mask effect, no smooth - blend stays 0
-            blend = 0.0;
+          // Default: sharp boundary (no blend) unless explicit mask effect is set
+          if (rule.maskType == 0) {
+            // No mask effect - sharp boundary using SDF sign
+            // deformedDist > 0: inside current terrain (blend = 0)
+            // deformedDist <= 0: inside neighbor terrain (blend = 1)
+            blend = deformedDist > 0.0 ? 0.0 : 1.0;
           } else if (rule.maskType == 1) {
             // Gradient blend - symmetric around boundary
             // deformedDist = -maskWidth -> blend = 1.0 (100% neighbor)
             // deformedDist = 0 -> blend = 0.5 (50%/50%)
             // deformedDist = +maskWidth -> blend = 0.0 (100% current)
-            blend = 1.0 - smoothstep(-maskWidth, maskWidth, deformedDist);
+            // If maskWidth is very small, still get sharp boundary
+            if (maskWidth < 0.01) {
+              blend = deformedDist > 0.0 ? 0.0 : 1.0;
+            } else {
+              blend = 1.0 - smoothstep(-maskWidth, maskWidth, deformedDist);
+            }
           } else if (rule.maskType == 2) {
-            // Scatter - use noise to create scattered transition (symmetric)
-            float scatterNoise = perlinNoise(vWorldXZ * rule.maskNoiseScale);
-            float normalizedDist = (deformedDist + maskWidth) / (2.0 * maskWidth);  // 0 to 1
-            normalizedDist = clamp(normalizedDist, 0.0, 1.0);
-            blend = step(scatterNoise, 1.0 - normalizedDist) * (1.0 - normalizedDist);
+            // Scatter - noisy edge for sand/gravel effect
+            // noiseScale: small value (0.02-0.1) = fine grain, large (0.5-2) = coarse
+            // We invert it: smaller noiseScale = higher frequency noise = finer grain
+            float scatterFreq = 50.0 / max(rule.maskNoiseScale, 0.01);
+            float scatterNoise = perlinNoise(vWorldXZ * scatterFreq);
+            // Shift the boundary based on noise: some pixels show neighbor earlier, some later
+            float noisyThreshold = (scatterNoise - 0.5) * maskWidth * 2.0;
+            // Sharp edge but with noisy position
+            blend = (deformedDist + noisyThreshold) > 0.0 ? 0.0 : 1.0;
           } else if (rule.maskType == 3) {
-            // Noise blend - blend with noise falloff (symmetric)
-            float noiseVal = perlinNoise(vWorldXZ * rule.maskNoiseScale);
-            float baseMask = 1.0 - smoothstep(-maskWidth, maskWidth, deformedDist);
-            blend = baseMask * mix(1.0, noiseVal, rule.maskFalloff);
+            // Noise blend - gradient with noise modulation
+            float blendFreq = 50.0 / max(rule.maskNoiseScale, 0.01);
+            float noiseVal = perlinNoise(vWorldXZ * blendFreq);
+            // Base gradient
+            float baseBlend = 1.0 - smoothstep(-maskWidth, maskWidth, deformedDist);
+            // Modulate with noise: falloff controls how much noise affects the blend
+            float noiseOffset = (noiseVal - 0.5) * rule.maskFalloff;
+            blend = clamp(baseBlend + noiseOffset, 0.0, 1.0);
           }
           
-          // Apply draw effects (shadow, glow, stroke) before color blend
-          if (rule.drawType == 1 && blend > 0.01) {
-            // Shadow - darken on one side of the edge
-            float shadowDist = deformedDist - rule.drawOffset;
-            float shadowMask = smoothstep(-rule.drawBlur, 0.0, shadowDist) * 
-                               (1.0 - smoothstep(0.0, rule.drawBlur, shadowDist));
-            resultColor = mix(resultColor, resultColor * 0.5, shadowMask * rule.drawOpacity);
-          } else if (rule.drawType == 2 && blend > 0.01) {
-            // Glow - brighten around the edge
-            float glowDist = abs(deformedDist);
-            float glowMask = 1.0 - smoothstep(0.0, rule.drawBlur, glowDist);
-            resultColor = mix(resultColor, resultColor * 1.5, glowMask * rule.drawOpacity);
-          } else if (rule.drawType == 3 && blend > 0.01) {
-            // Stroke - add colored line at edge
-            float strokeMask = smoothstep(-rule.drawBlur, 0.0, deformedDist) * 
-                               (1.0 - smoothstep(0.0, rule.drawBlur, deformedDist));
-            vec3 strokeColor = vec3(0.2, 0.15, 0.1);  // Dark brown stroke
-            resultColor = mix(resultColor, strokeColor, strokeMask * rule.drawOpacity);
-          }
+          // Apply draw effects (shadow, glow, stroke) BEFORE color blend
+          // Use raw absolute distance from GPU SDF for consistent positioning
+          // gpuSDFSample.signedDistance is signed, but for draw effects we need absolute
+          float rawAbsDist = gpuSDFMatches ? abs(gpuSDFSample.signedDistance) : abs(deformedDist);
+          float rawSignedDist = gpuSDFMatches ? gpuSDFSample.signedDistance : deformedDist;
           
           // Blend colors if we're near the edge
           if (blend > 0.01) {
             // Use full terrain color with all layers (pass -1 to auto-detect layer count)
-            vec3 neighborColor = computeTerrainLayers(nearestDiffTerrain, vWorldXZ, -1.0);
+            // Use effectiveNeighbor which is from GPU SDF when available
+            vec3 neighborColor = computeTerrainLayers(effectiveNeighbor, vWorldXZ, -1.0);
             resultColor = mix(resultColor, neighborColor, blend);
+          }
+          
+          // Apply draw effects AFTER blend so they appear on top of both terrains
+          if (rule.drawType == 1 && rawAbsDist < rule.drawBlur * 3.0) {
+            // Shadow - darken on one side of the edge (positive SDF side = patchRight)
+            float shadowDist = rawSignedDist - rule.drawOffset;  // offset moves shadow
+            float shadowMask = 1.0 - smoothstep(-rule.drawBlur, rule.drawBlur * 0.5, shadowDist);
+            shadowMask *= smoothstep(-rule.drawBlur * 2.0, -rule.drawBlur * 0.5, shadowDist);
+            resultColor = mix(resultColor, resultColor * 0.4, shadowMask * rule.drawOpacity);
+          } else if (rule.drawType == 2 && rawAbsDist < rule.drawBlur * 2.0) {
+            // Glow - brighten around the edge on both sides using draw color
+            float glowMask = 1.0 - smoothstep(0.0, rule.drawBlur, rawAbsDist);
+            vec3 glowColor = rule.drawColor.r > 0.01 ? rule.drawColor : resultColor * 1.5;
+            resultColor = mix(resultColor, glowColor, glowMask * rule.drawOpacity);
+          } else if (rule.drawType == 3 && rawAbsDist < rule.drawBlur * 1.5) {
+            // Stroke - add colored line at edge using absolute distance
+            float strokeMask = 1.0 - smoothstep(0.0, rule.drawBlur, rawAbsDist);
+            vec3 strokeColor = rule.drawColor;
+            resultColor = mix(resultColor, strokeColor, strokeMask * rule.drawOpacity);
           }
           }  // end if (rule.found)
         }
@@ -2248,6 +2628,131 @@ function createTerrainShaderMaterial() {
                 finalColor = vec3(0.0, clamp(-correctedSDF / 2.0, 0.0, 1.0), 0.0);  // Green = inside
               } else {
                 finalColor = vec3(clamp(correctedSDF / 2.0, 0.0, 1.0), 0.0, 0.0);  // Red = near edge
+              }
+            }
+          } else if (uDebugSDFMode == 6) {
+            // Mode 6: GPU Segment SDF - draw colored segment lines
+            // Each segment gets a unique color, shows actual polylines
+            
+            // Rainbow colors for segments
+            vec3 segmentColors[8];
+            segmentColors[0] = vec3(1.0, 0.0, 0.0);  // Red
+            segmentColors[1] = vec3(0.0, 1.0, 0.0);  // Green
+            segmentColors[2] = vec3(0.0, 0.5, 1.0);  // Blue
+            segmentColors[3] = vec3(1.0, 1.0, 0.0);  // Yellow
+            segmentColors[4] = vec3(1.0, 0.0, 1.0);  // Magenta
+            segmentColors[5] = vec3(0.0, 1.0, 1.0);  // Cyan
+            segmentColors[6] = vec3(1.0, 0.5, 0.0);  // Orange
+            segmentColors[7] = vec3(0.5, 1.0, 0.5);  // Light green
+            
+            // Start with terrain color (dimmed)
+            finalColor = resultColor * 0.3;
+            
+            // Colors for left/right sides of segments
+            vec3 leftSideColor = vec3(0.8, 0.4, 0.0);   // Orange = patchLeft
+            vec3 rightSideColor = vec3(0.0, 0.6, 0.8);  // Cyan = patchRight
+            
+            // Check distance to ALL segments and draw the nearest one
+            float lineWidth = 0.15;  // Line thickness in world units (~0.1 hex width)
+            float sideWidth = 0.5;   // Width of left/right side indicator
+            float minDist = 999.0;
+            float minSignedDist = 999.0;
+            int nearestSegId = -1;
+            
+            // FIXED: Texture width is 256 (MAX_SEGMENTS), not uSegmentCount
+            float metaTexWidth = 256.0;
+            
+            // Debug: if no segments, show red tint
+            if (uSegmentCount < 0.5) {
+              finalColor = vec3(0.5, 0.0, 0.0);  // Dark red = no segments
+            } else {
+              // Iterate through all segments (up to uSegmentCount)
+              for (int segId = 0; segId < 64; segId++) {  // Max 64 segments
+                if (float(segId) >= uSegmentCount) break;
+                
+                // Read segment metadata: [patchLeft, patchRight, pointStart, pointCount]
+                float metaU = (float(segId) + 0.5) / metaTexWidth;
+                vec4 meta = texture2D(uSegmentMeta, vec2(metaU, 0.5));
+                
+                int pointStart = int(meta.b);
+                int pointCount = int(meta.a);
+                
+                if (pointCount < 2) continue;
+                
+                // Calculate SIGNED distance to this segment's polyline
+                float sd = signedDistanceToPolyline(vWorldXZ, pointStart, pointCount);
+                float d = abs(sd);
+                
+                if (d < minDist) {
+                  minDist = d;
+                  minSignedDist = sd;
+                  nearestSegId = segId;
+                }
+              }
+              
+              // First draw left/right side indicators (wider, behind the line)
+              if (nearestSegId >= 0 && minDist < sideWidth) {
+                float sideAlpha = 0.3 * (1.0 - minDist / sideWidth);
+                if (minSignedDist > 0.0) {
+                  // Left side (patchLeft) - FIXED: sign was inverted
+                  finalColor = mix(finalColor, leftSideColor, sideAlpha);
+                } else {
+                  // Right side (patchRight)
+                  finalColor = mix(finalColor, rightSideColor, sideAlpha);
+                }
+              }
+              
+              // Then draw the segment line on top
+              if (nearestSegId >= 0 && minDist < lineWidth) {
+                // Get color for this segment
+                int colorIdx = nearestSegId - (nearestSegId / 8) * 8;  // mod 8
+                vec3 lineColor = segmentColors[colorIdx];
+                
+                // Solid bright line with slight anti-aliasing at edges
+                float edgeSoftness = 0.02;
+                float alpha = 1.0 - smoothstep(lineWidth - edgeSoftness, lineWidth, minDist);
+                
+                // Full brightness
+                finalColor = mix(finalColor, lineColor, alpha);
+              }
+            }
+            
+            // Also show hex grid overlay for hexes that have segments
+            vec2 hexF = worldToHexAxial(vWorldXZ);
+            float hx = hexF.x;
+            float hz = hexF.y;
+            float hy = -hx - hz;
+            
+            float rx = round(hx);
+            float ry = round(hy);
+            float rz = round(hz);
+            
+            float dx = abs(rx - hx);
+            float dy = abs(ry - hy);
+            float dz = abs(rz - hz);
+            
+            if (dx > dy && dx > dz) { rx = -ry - rz; }
+            else if (dy > dz) { ry = -rx - rz; }
+            else { rz = -rx - ry; }
+            
+            int q = int(rx);
+            int r = int(rz);
+            int radius = int(uMaxHexRadius);
+            
+            if (q >= -radius && q <= radius && r >= -radius && r <= radius) {
+              float texWidth = uMaxHexRadius * 4.0;
+              float texHeight = uMaxHexRadius * 2.0;
+              float px = float(q + radius) * 2.0;
+              float py = float(r + radius);
+              float u0 = (px + 0.5) / texWidth;
+              float v = (py + 0.5) / texHeight;
+              vec4 segIds0 = texture2D(uHexSegments, vec2(u0, v));
+              
+              bool hasSegment = segIds0.r >= 0.0 || segIds0.g >= 0.0 || segIds0.b >= 0.0 || segIds0.a >= 0.0;
+              
+              if (hasSegment) {
+                // Light outline for hexes with segments
+                finalColor = mix(finalColor, vec3(1.0), 0.1);
               }
             }
           }
@@ -2361,9 +2866,35 @@ function createPatchSDFTexture() {
   patchSDFTexture.needsUpdate = true
 }
 
+// Update patchSDF texture from cache (after incremental rule update)
+// This just copies the SDF data without recalculating patches
+function updatePatchSDFTextureFromCache() {
+  if (!patchSDFTexture) return
+  
+  const sdfData = patchBoundaries.sdfTexture.value
+  if (!sdfData) return
+  
+  const pixelCount = PATCH_SDF_SIZE * PATCH_SDF_SIZE
+  const texData = patchSDFTexture.image.data
+  
+  for (let i = 0; i < pixelCount; i++) {
+    texData[i * 4 + 0] = sdfData[i * 4 + 0]
+    texData[i * 4 + 1] = sdfData[i * 4 + 1]
+    texData[i * 4 + 2] = sdfData[i * 4 + 2]
+    texData[i * 4 + 3] = sdfData[i * 4 + 3]
+  }
+  
+  patchSDFTexture.needsUpdate = true
+  
+  // Also update GPU segment textures if available
+  updateSegmentTextures()
+}
+
 // Update patchSDF texture from CPU-computed data
 function updatePatchSDFTexture() {
   if (!patchSDFTexture) return
+  
+  // SDF texture build
   
   // Set world bounds based on current map radius
   const worldRadius = currentMapRadius * HEX_SIZE * 2
@@ -2377,61 +2908,38 @@ function updatePatchSDFTexture() {
   patchBoundaries.sdfHeight.value = PATCH_SDF_SIZE
   
   // Rebuild patches from current hex map (pass HEX_SIZE for world->hex conversion)
+  // Rebuilding patches from hexMapState
   patchBoundaries.rebuildAll(hexMapState.value, props.rules, props.terrains, HEX_SIZE)
   
-  // Debug: log patch info
-  console.log('[PatchSDF] Patches:', patchBoundaries.patches.value.size, 'Rules:', props.rules?.length)
-  console.log('[PatchSDF] hexMapState size:', hexMapState.value.size)
-  console.log('[PatchSDF] worldBounds:', patchBoundaries.worldBounds.value)
-  for (const [id, patch] of patchBoundaries.patches.value) {
-    console.log(`  Patch ${id}: terrain=${patch.terrainId}, hexes=${patch.hexes.size}, rawBoundaries=${patch.boundary?.length}, processedBoundaries=${patch.processedBoundary?.length}`)
-    if (patch.boundary?.[0]) {
-      console.log(`    Raw boundary[0] points: ${patch.boundary[0].length}`)
-    }
-    if (patch.processedBoundary?.[0]) {
-      console.log(`    Processed boundary[0] points: ${patch.processedBoundary[0].length}`)
-      // Log first few points
-      const pts = patch.processedBoundary[0].slice(0, 3)
-      console.log(`    First 3 points:`, pts.map(p => `(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`).join(', '))
-    }
-  }
+  // Summarize patches
+  // Patch summary logged
+  // Patch details logged (removed for performance)
   
   // Copy SDF data to texture
   const sdfData = patchBoundaries.sdfTexture.value
   if (!sdfData) {
-    console.log('[PatchSDF] No SDF data generated!')
+    console.warn('[3] CPU SDF texture: NO DATA generated!')
     return
   }
   
-  // Debug: check SDF values and terrain IDs
-  let minVal = Infinity, maxVal = -Infinity
+  // Quick SDF stats
   const pixelCount = PATCH_SDF_SIZE * PATCH_SDF_SIZE
-  const terrainPairCounts = new Map() // Track terrain pair frequencies
+  const terrainPairCounts = new Map()
   let validPixels = 0
   
   for (let i = 0; i < pixelCount; i++) {
-    const sdf = sdfData[i * 4]
-    const fromT = sdfData[i * 4 + 1]
-    const toT = sdfData[i * 4 + 2]
     const valid = sdfData[i * 4 + 3]
-    
     if (valid > 0.5) {
       validPixels++
-      // Decode terrain indices (they are normalized, *255 to get back)
-      const fromIdx = Math.round(fromT * 255) - 1  // -1 because we added 1 in encoding
+      const fromT = sdfData[i * 4 + 1]
+      const toT = sdfData[i * 4 + 2]
+      const fromIdx = Math.round(fromT * 255) - 1
       const toIdx = Math.round(toT * 255) - 1
-      const pairKey = `${fromIdx}->${toIdx}`
+      const pairKey = `${fromIdx}→${toIdx}`
       terrainPairCounts.set(pairKey, (terrainPairCounts.get(pairKey) || 0) + 1)
     }
-    
-    if (sdf < 100) {
-      minVal = Math.min(minVal, sdf)
-      maxVal = Math.max(maxVal, sdf)
-    }
   }
-  console.log(`[PatchSDF] SDF range: ${minVal.toFixed(2)} to ${maxVal.toFixed(2)}`)
-  console.log(`[PatchSDF] Valid pixels: ${validPixels}/${pixelCount}`)
-  console.log(`[PatchSDF] Terrain pairs in SDF:`, Object.fromEntries(terrainPairCounts))
+  // CPU SDF stats calculated (log removed for performance)
   
   // Copy SDF RGBA data to texture
   // R = signed distance, G = fromTerrain index, B = toTerrain index, A = valid
@@ -2453,8 +2961,66 @@ function updatePatchSDFTexture() {
     )
   }
   
+  // Update segment textures for GPU-based SDF (new system)
+  updateSegmentTextures()
+  
   // Update debug visualization
   updateDebugBoundaries()
+}
+
+// Update segment textures from patches (for GPU-based SDF)
+function updateSegmentTextures() {
+  // GPU segment textures update
+  
+  // Initialize textures if needed
+  if (!segmentTextures.segmentMetaTexture.value) {
+    segmentTextures.initTextures()
+  }
+  
+  // Export patch data and build segment textures
+  const exportData = patchBoundaries.exportForGPU()
+  segmentTextures.buildFromExport(exportData, props.terrains)
+  
+  // Build original edges map for debug (get from patch processedSegments)
+  const edgesMap = new Map()
+  for (const [, patch] of patchBoundaries.patches.value) {
+    for (const seg of (patch.processedSegments || [])) {
+      // Find corresponding exported segment by matching points
+      const expSeg = exportData.segments?.find(s => 
+        s.points?.length > 0 && seg.processedPoints?.length > 0 &&
+        Math.abs(s.points[0].x - seg.processedPoints[0].x) < 0.01 &&
+        Math.abs(s.points[0].z - seg.processedPoints[0].z) < 0.01
+      )
+      if (expSeg && seg.edges) {
+        // Add hex centers to edges
+        const edgesWithHexCenters = seg.edges.map(e => {
+          if (e.hexKey) {
+            const [q, r] = e.hexKey.split(',').map(Number)
+            const hexCenter = {
+              x: 0.5 * Math.sqrt(3) * (q + r / 2),
+              z: 0.5 * 1.5 * r
+            }
+            return { ...e, hexCenter }
+          }
+          return e
+        })
+        edgesMap.set(expSeg.id, edgesWithHexCenters)
+      }
+    }
+  }
+  
+  // Send data to global debug system
+  globalDebug.setSegments(exportData.segments || [], edgesMap)
+  
+  // Update shader uniforms with segment textures
+  if (unifiedMesh && unifiedMesh.material.uniforms) {
+    const segUniforms = segmentTextures.getUniforms()
+    for (const [key, value] of Object.entries(segUniforms)) {
+      if (unifiedMesh.material.uniforms[key]) {
+        unifiedMesh.material.uniforms[key].value = value.value
+      }
+    }
+  }
 }
 
 // Debug visualization: draw boundary SEGMENTS with rainbow colors
@@ -2470,6 +3036,10 @@ function updateDebugBoundaries() {
       if (obj.material) obj.material.dispose()
     })
   }
+  
+  // DISABLED: Using shader debug mode 6 instead
+  // To re-enable, remove this return
+  return
   
   debugBoundariesGroup = new THREE.Group()
   debugBoundariesGroup.name = 'debugBoundaries'
@@ -2497,70 +3067,26 @@ function updateDebugBoundaries() {
     if (patch.terrainId !== DEBUG_TERRAIN) continue
     
     const segments = patch.segments || []
-    console.log(`[Debug] Patch ${id}: ${segments.length} segments`)
-    
-    // Log segment info
-    segments.forEach((seg, i) => {
-      console.log(`  Segment ${i}: neighbor=${seg.neighborTerrain || 'null'}, edges=${seg.edges.length}`)
-    })
-    
+
     // Draw each segment with its rainbow color
-    // Apply effects: test with straighten strength=0.8
+    // NOTE: Ghost edges temporarily disabled - segments belong to two patches equally
     const DEBUG_STRAIGHTEN = 0.6
     const DEBUG_SMOOTH = 0  // 0 = off, 1-4 = iterations
-    const GHOST_EDGES = 2  // How many neighbor edges to include for smoother transitions
     
     segments.forEach((segment, segmentIdx) => {
       const colorHex = SEGMENT_COLORS[segmentIdx % SEGMENT_COLORS.length]
       const color = new THREE.Color(colorHex)
       
-      // Get previous and next segments (circular)
-      const prevSegment = segments[(segmentIdx - 1 + segments.length) % segments.length]
-      const nextSegment = segments[(segmentIdx + 1) % segments.length]
+      // Convert edges to polyline (no ghost edges)
+      let polyline = edgesToPolyline(segment.edges)
       
-      // Build extended polyline with ghost edges from neighbors
-      // Ghost edges: last N edges of previous segment + current + first N edges of next segment
-      const ghostEdgesBefore = prevSegment.edges.slice(-GHOST_EDGES)
-      const ghostEdgesAfter = nextSegment.edges.slice(0, GHOST_EDGES)
-      
-      // Convert to points
-      const beforePoints = edgesToPolyline(ghostEdgesBefore)
-      const currentPoints = edgesToPolyline(segment.edges)
-      const afterPoints = edgesToPolyline(ghostEdgesAfter)
-      
-      // Combine: before (excluding last point to avoid duplicate) + current + after (excluding first point)
-      let extendedPolyline = [
-        ...beforePoints.slice(0, -1),  // Ghost before (без последней точки)
-        ...currentPoints,               // Current segment
-        ...afterPoints.slice(1)         // Ghost after (без первой точки)
-      ]
-      
-      const ghostPointsBefore = beforePoints.length - 1  // How many ghost points at start
-      const ghostPointsAfter = afterPoints.length - 1    // How many ghost points at end
-      const originalLength = currentPoints.length
-      
-      console.log(`  Segment ${segmentIdx}: ${originalLength} pts, +${ghostPointsBefore} ghost before, +${ghostPointsAfter} ghost after`)
-      
-      // Apply effects to extended polyline
+      // Apply effects
       if (DEBUG_SMOOTH > 0) {
-        extendedPolyline = smoothPolylineOpen(extendedPolyline, DEBUG_SMOOTH)
+        polyline = smoothPolylineOpen(polyline, DEBUG_SMOOTH)
       }
       if (DEBUG_STRAIGHTEN > 0) {
-        extendedPolyline = straightenPolylineOpen(extendedPolyline, DEBUG_STRAIGHTEN)
+        polyline = straightenPolylineOpen(polyline, DEBUG_STRAIGHTEN)
       }
-      
-      // Calculate where current segment is in the processed polyline
-      // After smoothing, point count may change, so we need to estimate proportionally
-      const totalOriginalPoints = ghostPointsBefore + originalLength + ghostPointsAfter
-      const ratio = extendedPolyline.length / totalOriginalPoints
-      
-      const startIdx = Math.round(ghostPointsBefore * ratio)
-      const endIdx = extendedPolyline.length - Math.round(ghostPointsAfter * ratio)
-      
-      // Extract only the current segment's portion
-      const polyline = extendedPolyline.slice(startIdx, endIdx)
-      
-      console.log(`  Segment ${segmentIdx}: extracted ${polyline.length} points from extended ${extendedPolyline.length}`)
       
       // Draw polyline as connected cylinders
       for (let i = 0; i < polyline.length - 1; i++) {
@@ -2591,7 +3117,6 @@ function updateDebugBoundaries() {
   }
   
   scene.add(debugBoundariesGroup)
-  console.log('[Debug] Drew', debugBoundariesGroup.children.length, 'edge cylinders for', DEBUG_TERRAIN)
 }
 
 // Update transition rules texture from props.rules
@@ -2628,12 +3153,6 @@ function updateTransitionRulesTexture() {
     else if (rule.match?.level === 'id-to-any' || rule.match?.level === 'any-to-id') matchLevel = 1
     else matchLevel = 2
     
-    // DEBUG: Log rule encoding
-    const hasSmoothEffect = rule.lineEffects?.find(e => e.enabled && e.type === 'smooth')
-    const hasStraightenEffect = rule.lineEffects?.find(e => e.enabled && e.type === 'straighten')
-    const hasSmooth = !!(hasSmoothEffect || hasStraightenEffect)
-    console.log(`[Rule ${ruleIndex}] ${rule.match?.from || 'any'} → ${rule.match?.to || 'any'}, level=${matchLevel}, fromId=${fromId}, toId=${toId}, hasSmooth=${hasSmooth}`)
-    
     data[baseIdx + 0] = (fromId + 1) / 256  // +1 so -1 becomes 0
     data[baseIdx + 1] = (toId + 1) / 256
     data[baseIdx + 2] = matchLevel / 4
@@ -2645,12 +3164,12 @@ function updateTransitionRulesTexture() {
     data[baseIdx + 5] = 0.5  // zPriority default
     data[baseIdx + 6] = 0.0  // No default blend width - must be set explicitly by mask effects
     
-    // Check for smooth/straighten effects and encode as smoothAmount
-    const smoothEffect = rule.lineEffects?.find(e => e.enabled && e.type === 'smooth')
-    const straightenEffect = rule.lineEffects?.find(e => e.enabled && e.type === 'straighten')
+    // Check for ANY line effects and encode as smoothAmount
+    // Any line effect means we should use GPU SDF (processed polylines) instead of hex edges
+    const hasAnyLineEffect = rule.lineEffects?.some(e => e.enabled)
     let smoothAmount = 0.0  // Default: sharp hex edges (no CPU SDF)
-    if (smoothEffect || straightenEffect) {
-      // Both smooth and straighten use CPU-computed SDF boundaries
+    if (hasAnyLineEffect) {
+      // Any line effect uses GPU-computed SDF boundaries
       smoothAmount = 1.0
     }
     data[baseIdx + 7] = smoothAmount
@@ -2675,8 +3194,8 @@ function updateTransitionRulesTexture() {
       const maskTypes = { none: 0, blend: 1, scatter: 2, noiseBlend: 3 }
       data[baseIdx + 12] = (maskTypes[maskEffect.type] || 1) / 10
       data[baseIdx + 13] = maskEffect.width || 0.15
-      data[baseIdx + 14] = maskEffect.density || maskEffect.falloff || 0.5
-      data[baseIdx + 15] = (maskEffect.noiseScale || 0.2) * 5  // scale up
+      data[baseIdx + 14] = maskEffect.density || maskEffect.contrast || maskEffect.falloff || 0.5
+      data[baseIdx + 15] = maskEffect.noiseScale || 0.2  // store directly, no scaling
     }
     // No default mask effect - if no maskEffects defined, pixels stay at 0 (maskType = none)
     
@@ -2689,6 +3208,17 @@ function updateTransitionRulesTexture() {
       data[baseIdx + 17] = drawEffect.offsetX || drawEffect.offset || 0.02
       data[baseIdx + 18] = drawEffect.width || 0.04
       data[baseIdx + 19] = drawEffect.opacity || 0.3
+      
+      // Pixel 5: Draw color (for stroke effect)
+      // r, g, b = color components, a = reserved
+      const color = drawEffect.color || '#3d2817'  // Default dark brown
+      const r = parseInt(color.slice(1, 3), 16) / 255
+      const g = parseInt(color.slice(3, 5), 16) / 255
+      const b = parseInt(color.slice(5, 7), 16) / 255
+      data[baseIdx + 20] = r
+      data[baseIdx + 21] = g
+      data[baseIdx + 22] = b
+      data[baseIdx + 23] = 1.0  // reserved
     }
   })
   
@@ -3403,14 +3933,24 @@ watch(
   { deep: true }
 )
 
-// Watch for transition rules changes
+// Watch for transition rules changes - use incremental update
 watch(
   () => props.rules,
   () => {
     if (scene) {
       updateTransitionRulesTexture()
-      // Also update CPU-computed SDF since rules may have changed smooth/straighten effects
-      updatePatchSDFTexture()
+      
+      // Try incremental update first - only recalculates affected segments
+      const updateResult = patchBoundaries.updateRules(props.rules)
+      
+      if (!updateResult) {
+        // Fall back to full rebuild if incremental failed (e.g., first init)
+        updatePatchSDFTexture()
+      } else if (updateResult.patchesAffected > 0) {
+        // Incremental succeeded AND patches were affected - update GPU segment textures
+        updateSegmentTextures()
+      }
+      // If patchesAffected === 0, no texture update needed
     }
   },
   { deep: true }
@@ -3420,11 +3960,17 @@ onMounted(() => {
   init()
   window.addEventListener('resize', handleResize)
   
+  // Register debug visualization callbacks
+  globalDebug.registerCallbacks({
+    onHighlightSegment,
+    onHighlightFragment
+  })
+  
   // Expose debug function to console
   window.setSDFDebugMode = (mode) => {
     if (unifiedMesh && unifiedMesh.material.uniforms) {
       unifiedMesh.material.uniforms.uDebugSDFMode.value = mode
-      console.log('[SDF Debug] Mode set to:', mode, '(0=off, 1=valid, 2=terrainIDs, 3=distance, 4=matching)')
+      // SDF debug mode changed
     }
   }
 })

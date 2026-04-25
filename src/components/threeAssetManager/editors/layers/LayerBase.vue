@@ -1,8 +1,8 @@
 <template>
   <div :class="['layer-item', { collapsed: isCollapsed, disabled: !layer.enabled }]">
-    <!-- Layer Header -->
-    <div class="layer-header" @click="toggleCollapse">
-      <div class="layer-drag-handle" @mousedown.stop>⋮⋮</div>
+    <!-- Layer Header (draggable) -->
+    <div class="layer-header drag-handle" @click="toggleCollapse">
+      <span class="drag-dots">⋮⋮</span>
       
       <button 
         class="layer-visibility" 
@@ -178,19 +178,26 @@ function startEditingName() {
   gap: 8px;
   padding: 8px 10px;
   background: #222244;
-  cursor: pointer;
+  cursor: grab;
   user-select: none;
+}
+
+.layer-header:active {
+  cursor: grabbing;
 }
 
 .layer-header:hover {
   background: #2a2a55;
 }
 
-.layer-drag-handle {
+.drag-dots {
   color: #555;
-  cursor: grab;
   font-size: 10px;
   letter-spacing: 2px;
+}
+
+.layer-header:hover .drag-dots {
+  color: #888;
 }
 
 .layer-visibility {

@@ -162,33 +162,40 @@
         <span class="layers-count">{{ terrain.layers?.length || 0 }} слоёв</span>
         <div class="layers-actions">
           <select v-model="newLayerType" class="layer-type-select">
-            <option value="color">🎨 Цвет</option>
-            <option value="noise">🌫️ Шум</option>
+            <option value="color">● Цвет</option>
+            <option value="noise">░ Шум</option>
             <option value="pattern">⬡ Паттерн</option>
-            <option value="gradient">🌈 Градиент</option>
-            <option value="texture">🖼️ Текстура</option>
-            <option value="edge">⭕ Обводка</option>
+            <option value="gradient">▓ Градиент</option>
+            <option value="texture">▦ Текстура</option>
+            <option value="edge">○ Обводка</option>
           </select>
           <button class="btn-add-layer" @click="addLayer">+ Добавить</button>
         </div>
       </div>
 
-      <div class="layers-list">
-        <component
-          v-for="(layer, index) in terrain.layers"
-          :key="layer.id"
-          :is="getLayerComponent(layer.type)"
-          :layer="layer"
-          :is-first="index === 0"
-          :is-last="index === terrain.layers.length - 1"
-          @update="updateLayer(layer.id, $event)"
-          @delete="deleteLayer(layer.id)"
-          @move="moveLayer(layer.id, $event)"
-        />
+      <draggable 
+        v-if="terrain.layers?.length"
+        v-model="layersModel"
+        item-key="id"
+        handle=".layer-header"
+        ghost-class="layer-ghost"
+        class="layers-list"
+      >
+        <template #item="{ element: layer, index }">
+          <component
+            :is="getLayerComponent(layer.type)"
+            :layer="layer"
+            :index="index"
+            :is-first="index === 0"
+            :is-last="index === terrain.layers.length - 1"
+            @update="updateLayer(layer.id, $event)"
+            @delete="deleteLayer(layer.id)"
+          />
+        </template>
+      </draggable>
 
-        <div v-if="!terrain.layers?.length" class="empty-layers">
-          Нет слоёв. Добавьте первый слой.
-        </div>
+      <div v-if="!terrain.layers?.length" class="empty-layers">
+        Нет слоёв. Добавьте первый слой.
       </div>
     </div>
 
@@ -260,7 +267,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import draggable from 'vuedraggable'
 import { createLayer } from '@/stores/threeAssets'
 import ColorLayer from './layers/ColorLayer.vue'
 import NoiseLayer from './layers/NoiseLayer.vue'
@@ -280,6 +288,12 @@ const emit = defineEmits(['update'])
 
 const activeTab = ref('layers')
 const newLayerType = ref('noise')
+
+// Computed model for vuedraggable (two-way binding workaround for props)
+const layersModel = computed({
+  get: () => props.terrain.layers || [],
+  set: (newLayers) => emit('update', { layers: newLayers })
+})
 
 const layerComponents = {
   color: ColorLayer,
@@ -594,5 +608,16 @@ input[type="checkbox"] {
   font-size: 10px;
   color: #666;
   font-family: monospace;
+}
+
+/* Drag and drop (vuedraggable) */
+:deep(.layer-ghost) {
+  opacity: 0.4;
+  background: #3a3a6a !important;
+  border: 2px dashed #5a5a8a;
+}
+:deep(.sortable-drag) {
+  opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 </style>

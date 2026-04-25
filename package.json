@@ -20,7 +20,8 @@
     "pinia-plugin-persistedstate": "^3.2.0",
     "three": "^0.182.0",
     "vue": "^3.4.29",
-    "vue-router": "^4.6.3"
+    "vue-router": "^4.6.3",
+    "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.8.0",
